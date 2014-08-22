@@ -25,7 +25,7 @@ DATA_PATH = '/usr/local/MStation/data/'
 CONNECT_TRYOUT = 10
 UPLOAD_URL = 'upload_handler'
 
-logging.basicConfig(format = LOG_FORMAT, level = logging.INFO, filename = LOG_PATH)
+logging.basicConfig(format=LOG_FORMAT, level=logging.INFO, filename=LOG_PATH)
 
 write_lock = threading.Lock()
 upload_lock = threading.Lock()
@@ -42,23 +42,18 @@ def main():
 
 	init_patt = re.compile(r'MStation')
 	curr_date = datetime.date.today()
-	
+
 	while True:
 		try:
 			curr = ser.readline()
-		except IOError as e:
+		except SerialException as e:
 			logging.error('Serial error: ' + str(e))
 			time.sleep(120)
 			ser = serial_connect(SERIAL_DEV, 115200)
 			continue
-		except SerialException as e:
-			logging.error('Serial error: ' + str(e))
-			time.sleep(60)
-			ser = serial_connect(SERIAL_DEV, 115200)
-			continue
-		
+
 		init_match = re.search(init_patt, curr)
-		
+
 		if init_match:
 			logging.info(curr)
 			continue
@@ -68,10 +63,10 @@ def main():
 			f_path = DATA_PATH + f_name
 			f_table = open(f_path, 'a', 0)
 			curr_date = datetime.date.today()
-			
+
 		date_str = datetime.datetime.now().strftime('%Y/%m/%d %H:%M')
 		final_str = date_str + ',' + curr
-		
+
 		ftp_thread = threading.Thread(target=upload_to_ftp, args=(FTP_SERV, FTP_NAME, FTP_PASS, f_name))
 		upl_thread = threading.Thread(target=upload_to_site, args=(UPLOAD_URL, final_str))
 		
@@ -123,7 +118,7 @@ def upload_to_ftp(host, name, passw, f_name):
 			else:
 				raise uplFail('sizes not match')
 		else:
-			raise ('unknown error')
+			raise uplFail('unknown error')
 		ftp_serv.close()
 	except (socket.error, socket.gaierror) as e:
 		logging.error('FTP Socket Error: ' + str(e))
