@@ -12,6 +12,8 @@ import time
 import signal
 import logging
 import threading
+import requests
+from requests.exceptions import *
 
 LOG_PATH = '/var/log/mstation.log'
 LOG_FORMAT = '[%(asctime)s] %(levelname)s: %(funcName)s: %(message)s'
@@ -21,10 +23,14 @@ FTP_NAME = 'ftp_name'
 FTP_PASS = 'ftp_password'
 DATA_PATH = '/usr/local/MStation/data/'
 CONNECT_TRYOUT = 10
+UPLOAD_URL = 'upload_handler'
 
 logging.basicConfig(format = LOG_FORMAT, level = logging.INFO, filename = LOG_PATH)
 
 write_lock = threading.Lock()
+upload_lock = threading.Lock()
+
+failed_upload = []
 
 def main():
 	signal.signal(signal.SIGINT, ctrl_c_handler)
@@ -62,15 +68,19 @@ def main():
 			f_path = DATA_PATH + f_name
 			f_table = open(f_path, 'a', 0)
 			curr_date = datetime.date.today()
+			
+		date_str = datetime.datetime.now().strftime('%Y/%m/%d %H:%M')
+		final_str = date_str + ',' + curr
 		
 		ftp_thread = threading.Thread(target=upload_to_ftp, args=(FTP_SERV, FTP_NAME, FTP_PASS, f_name))
+		upl_thread = threading.Thread(target=upload_to_site, args=(UPLOAD_URL, final_str))
 		
-		date_str = datetime.datetime.now().strftime('%Y/%m/%d %H:%M')
 		write_lock.acquire()
-		f_table.write(date_str+','+curr)
+		f_table.write(final_str)
 		write_lock.release()
 		#upload_to_ftp(FTP_SERV, FTP_NAME, FTP_PASS, f_name)
 		ftp_thread.start()
+		upl_thread.start()
 	
 	sys.exit(0)
 
@@ -128,7 +138,8 @@ def upload_to_ftp(host, name, passw, f_name):
 	else:
 		logging.info('FTP Upload Success')
 	finally:
-		write_lock.release()
+		if write_lock.locked():
+			write_lock.release()
 	
 	upl_file.close()
 
@@ -137,6 +148,34 @@ class uplFail(Exception):
 		self.value = value
 	def __str__(self):
 		return repr(self.value)
+		
+def upload_to_site(url, data_str):
+	if not upload_to_url(url, data_str):
+		failed_upload.append(data_str)
+	else:
+		if upload_lock.acquire(False):
+			while len(failed_upload) <> 0:
+				data = failed_upload[0]
+				if upload_to_url(url, data):
+					failed_upload.pop(0)
+			upload_lock.release()
+		
+def upload_to_url(url, data_str):
+	data_send = data_str.split(',')
+	data_req = {'date': data_send[0], 'temp1': data_send[1], 'temp2': data_send[2], 'humid': data_send[3]}
+	
+	try:
+		req = requests.post(url, data=data_req, timeout=60)
+	except (ConnectionError, HTTPError, URLRequired, Timeout) as e:
+		logging.error(str(e))
+		return False
+	else:
+		if (req.status_code == requests.codes.ok):
+			logging.info('Upload success.')
+			return True
+		else:
+			logging.error('Upload failed with code ' + str(req.status_code))
+			return False
 
 def ctrl_c_handler(signum, frame):
 	print 'Exit.'
