@@ -11,6 +11,7 @@ import os, sys
 import time
 import signal
 import logging
+from logging.handlers import WatchedFileHandler
 import threading
 import requests
 from requests.exceptions import *
@@ -25,12 +26,17 @@ DATA_PATH = '/usr/local/MStation/data/'
 CONNECT_TRYOUT = 10
 UPLOAD_URL = 'upload_handler'
 
-logging.basicConfig(format=LOG_FORMAT, level=logging.INFO, filename=LOG_PATH)
-
 write_lock = threading.Lock()
 upload_lock = threading.Lock()
 
 failed_upload = []
+
+log = logging.getLogger('main_log')
+log.setLevel(logging.INFO)
+log_handler = WatchedFileHandler(LOG_PATH)
+log_fmt = logging.Formatter(fmt=LOG_FORMAT)
+log_handler.setFormatter(log_fmt)
+log.addHandler(log_handler)
 
 def main():
 	signal.signal(signal.SIGINT, ctrl_c_handler)
@@ -47,7 +53,7 @@ def main():
 		try:
 			curr = ser.readline()
 		except SerialException as e:
-			logging.error('Serial error: ' + str(e))
+			log.error('Serial error: ' + str(e))
 			time.sleep(120)
 			ser = serial_connect(SERIAL_DEV, 115200)
 			continue
@@ -55,7 +61,7 @@ def main():
 		init_match = re.search(init_patt, curr)
 
 		if init_match:
-			logging.info(curr)
+			log.info(curr)
 			continue
 		if curr_date.day <> datetime.date.today().day:
 			f_table.close()
@@ -86,16 +92,16 @@ def serial_connect(dev, speed):
 		try:
 			ser = serial.Serial(dev, speed)
 		except SerialException as e:
-			logging.error('Serial Connect Error: ' + str(e))
+			log.error('Serial Connect Error: ' + str(e))
 			print 'Connection Error'
 			time.sleep(120)
 		else:
-			logging.info('Connected after ' + str(try_count) + ' tryouts')
+			log.info('Connected after ' + str(try_count) + ' tryouts')
 			return ser
 		finally:
 			try_count += 1
 	
-	logging.critical('FAIL to connect. Exit.')
+	log.critical('FAIL to connect. Exit.')
 	sys.exit(-1)
 	
 
@@ -121,17 +127,17 @@ def upload_to_ftp(host, name, passw, f_name):
 			raise uplFail('unknown error')
 		ftp_serv.close()
 	except (socket.error, socket.gaierror) as e:
-		logging.error('FTP Socket Error: ' + str(e))
+		log.error('FTP Socket Error: ' + str(e))
 	except ftplib.error_temp as e:
-		logging.error('FTP Temporary Error: ' + str(e))
+		log.error('FTP Temporary Error: ' + str(e))
 	except ftplib.error_perm as e:
-		logging.error('FTP Permanent Error: ' + str(e))
+		log.error('FTP Permanent Error: ' + str(e))
 	except ftplib.error_reply as e:
-		logging.error('FTP Unexpected Error: ' + str(e))
+		log.error('FTP Unexpected Error: ' + str(e))
 	except uplFail as e:
-		logging.error('FTP Upload Failed: ' + str(e))
+		log.error('FTP Upload Failed: ' + str(e))
 	else:
-		logging.info('FTP Upload Success')
+		log.info('FTP Upload Success')
 	finally:
 		if write_lock.locked():
 			write_lock.release()
@@ -162,19 +168,20 @@ def upload_to_url(url, data_str):
 	try:
 		req = requests.post(url, data=data_req, timeout=60)
 	except (ConnectionError, HTTPError, URLRequired, Timeout) as e:
-		logging.error(str(e))
+		log.error(str(e))
 		return False
 	else:
 		if (req.status_code == requests.codes.ok):
-			logging.info('Upload success.')
+			log.info('Upload success.')
 			return True
 		else:
-			logging.error('Upload failed with code ' + str(req.status_code))
+			log.error('Upload failed with code ' + str(req.status_code))
 			return False
 
 def ctrl_c_handler(signum, frame):
 	print 'Exit.'
-	logging.info('Exit.')
+	log.info('Exit.')
+	logging.shutdown()
 	sys.exit(0)
 
 if __name__ == '__main__':
