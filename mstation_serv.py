@@ -25,6 +25,15 @@ FTP_PASS = 'ftp_password'
 DATA_PATH = '/usr/local/MStation/data/'
 CONNECT_TRYOUT = 10
 UPLOAD_URL = 'upload_handler'
+# OpenWeatherMap
+URL_OPENW = 'http://openweathermap.org/data/post'
+LATITUDE = 56.3294
+LONGITUDE = 37.7532
+ALTITUDE = 215
+USER_NAME = 'user_name'
+PASSW = 'password'
+STATION_NAME = 'station_name'
+# OpenWeatherMap
 
 write_lock = threading.Lock()
 upload_lock = threading.Lock()
@@ -75,6 +84,7 @@ def main():
 
 		ftp_thread = threading.Thread(target=upload_to_ftp, args=(FTP_SERV, FTP_NAME, FTP_PASS, f_name))
 		upl_thread = threading.Thread(target=upload_to_site, args=(UPLOAD_URL, final_str))
+		openw_thread = threading.Thread(target=upload_to_openweathermap, args=[final_str])
 		
 		write_lock.acquire()
 		f_table.write(final_str)
@@ -82,6 +92,7 @@ def main():
 		#upload_to_ftp(FTP_SERV, FTP_NAME, FTP_PASS, f_name)
 		ftp_thread.start()
 		upl_thread.start()
+		openw_thread.start()
 	
 	sys.exit(0)
 
@@ -177,6 +188,22 @@ def upload_to_url(url, data_str):
 		else:
 			log.error('Upload failed with code ' + str(req.status_code))
 			return False
+			
+def upload_to_openweathermap(data_str):
+	data_send = data_str.split(',')
+	data_post = {'temp': data_send[1], 'humidity': data_send[3],
+				'lat': LATITUDE, 'long': LONGITUDE, 'alt': ALTITUDE, 
+				'name': STATION_NAME}
+	try:
+		req = requests.post(URL_OPENW, auth=(USER_NAME, PASSW), 
+							data=data_post, timeout=60)
+	except (ConnectionError, HTTPError, URLRequired, Timeout) as e:
+		log.error(str(e))
+	else:
+		if (req.status_code == requests.codes.ok):
+			log.info('Upload to OpenWeather success.')
+		else:
+			log.error('Upload to OpenWeather failed with code ' + str(req.status_code))
 
 def ctrl_c_handler(signum, frame):
 	print 'Exit.'
