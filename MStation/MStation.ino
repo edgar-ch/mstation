@@ -1,7 +1,7 @@
 //
 //    FILE: MStation.ino
 //  AUTHOR: Edgar Cherkasov
-// VERSION: 0.1
+// VERSION: 0.1.1
 // PURPOSE: Code for DIY meteostation
 //     URL:
 //
@@ -33,12 +33,13 @@ unsigned long sending_interval = (unsigned long) 5*60*1000; // pause between sen
 unsigned long prevMillis_sensors = sensors_interval, prevMillis_lcd = lcd_interval, prevMillis_sending = sending_interval;
 byte temp12 = 0; // which temperature will show, 0 - from DHT, 1 - from DS18B20
 float ds18_temp_mid = 0, DHT_temp_mid = 0, humid_mid = 0; // middle value calculation
-byte data_read_count = 0;
+byte ds18_data_read_count = 0;
+byte dht_data_read_count = 0;
 
 void setup()
 {
   lcd.begin(16, 2);
-  lcd.print("MStation v0.1");
+  lcd.print("MStation v0.1.1");
   lcd.setCursor(0, 1);
   lcd.print("Init...");
   pinMode(LED, OUTPUT);
@@ -61,7 +62,12 @@ void loop()
     // TURN ON LED
     digitalWrite(LED, HIGH);
     // READ DATA FROM DS18B20+ SENSORS
-    if (!getTempDS18B20()) {
+    if (getTempDS18B20()) {
+      // sum values
+      ds18_temp_mid += ds18_temp;
+      // inc count
+      ds18_data_read_count++;
+    } else {
       Serial.print("ERR:DS18B20_ERROR_");
       Serial.println(ds18_err);
     }
@@ -70,6 +76,10 @@ void loop()
     switch (chk)
     {
       case DHTLIB_OK:
+        // inc count and sum values
+        dht_data_read_count++;
+        DHT_temp_mid += DHT.temperature;
+        humid_mid += DHT.humidity;
         break;
       case DHTLIB_ERROR_CHECKSUM: 
         Serial.println("Checksum_error"); 
@@ -83,12 +93,6 @@ void loop()
     }
     // TURN OFF LED
     digitalWrite(LED, LOW);
-    // inc count
-    data_read_count++;
-    // sum values
-    ds18_temp_mid += ds18_temp;
-    DHT_temp_mid += DHT.temperature;
-    humid_mid += DHT.humidity;
   }
   
   // SEND DATA
@@ -103,15 +107,15 @@ void loop()
     Serial.println((int) DHT.humidity); */
     
     // send
-    Serial.print((float) ds18_temp_mid/data_read_count, 2);
+    Serial.print((float) ds18_temp_mid/ds18_data_read_count, 2);
     Serial.print(',');
-    Serial.print((float) DHT_temp_mid/data_read_count, 2);
+    Serial.print((float) DHT_temp_mid/dht_data_read_count, 2);
     Serial.print(',');
-    Serial.println((float) humid_mid/data_read_count, 2);
+    Serial.println((float) humid_mid/dht_data_read_count, 2);
     
     // zero values and counter
     ds18_temp_mid = 0; DHT_temp_mid = 0; humid_mid = 0;
-    data_read_count = 0;
+    ds18_data_read_count = 0; dht_data_read_count = 0;
   }
   
   // SHOW DATA
