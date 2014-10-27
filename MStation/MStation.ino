@@ -126,19 +126,22 @@ void loop()
     // Print temp on LCD
     lcd.setCursor(0, 0);
     if (!temp12) {
-      lcd.print("Temp1: ");
+      //lcd.print("Temp1: ");
+      lcd.print("Te""\xBC\xBE""1: ");
       lcd.print((int) DHT.temperature);
       lcd.print(" \x99""C    ");
       temp12 = 1;
     } else {
-      lcd.print("Temp2: ");
+      //lcd.print("Temp2: ");
+      lcd.print("Te""\xBC\xBE""2: ");
       lcd.print(ds18_tempS);
       lcd.print(" \x99""C");
       temp12 = 0;
     }
     // Print humidity on LCD
     lcd.setCursor(0, 1);
-    lcd.print("Humid: ");
+    //lcd.print("Humid: ");
+    lcd.print("\x42\xBB\x61\xB6\xBD"": ");
     lcd.print((int) DHT.humidity);
     lcd.print(" %");
   }
