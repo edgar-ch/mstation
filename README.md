@@ -17,6 +17,7 @@ Where that is
 
 **MStation/** - Arduino sketch  
 **schematic/** - scheme of connection of sensors and display (use [Fritzing](http://fritzing.org/home/ "Fritzing") to view)  
+**web_serv/** - code for manipulations with data on web server  
 **mstation_serv.py** - collect data from Arduino using serial port and sending it to web (Web, FTP, OpenWeatherMap)  
 **mstation.conf** - config to autostart for *mstation_serv.py* (using upstart)  
 **mstation_py.conf** - version of config for Raspberry Pi (set system time using NTP before starting)  
