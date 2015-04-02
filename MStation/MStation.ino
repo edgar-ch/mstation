@@ -1,11 +1,12 @@
 //
 //    FILE: MStation.ino
 //  AUTHOR: Edgar Cherkasov
-// VERSION: 0.1.1
+// VERSION: 0.1.2
 // PURPOSE: Code for DIY meteostation
 //     URL:
 //
-// Released to the public domain
+// Released under MIT License
+// See LICENSE.md
 //
 
 #include <dht.h>
@@ -143,7 +144,7 @@ void loop()
     //lcd.print("Humid: ");
     lcd.print("\x42\xBB\x61\xB6\xBD"": ");
     lcd.print((int) DHT.humidity);
-    lcd.print(" %");
+    lcd.print(" %%");
   }
 }
 
@@ -170,7 +171,7 @@ boolean getTempDS18B20()
     return false;
   }
     
-  ds18_temp = ((data[1] << 8) + data[0])*0.0625; // convert temperaturen
+  ds18_temp = ((data[1] << 8) | data[0]) * 0.0625; // convert temperature
   
   return true;
 }
