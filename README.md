@@ -26,4 +26,4 @@ Future
 ------
 
 Now I'm seriously rework the project, plans to give up the connection by wire connection, use the radios, the ability to run on battery power, etc.  
-All changes in the folder *new_version/*  
+All changes see in master branch  
