@@ -1,3 +1,7 @@
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+#include <RF24_config.h>
 #include <Wire.h>
 // BMP180 read/write i2c bus addres
 #define BMP180_READ_ADDR 0xF7
@@ -39,8 +43,10 @@
 #define BH1750_1TIME_LR 0x23
 // BH1750 resolution mods
 enum BH1750_MOD{LR = 0, HR, HR2};
+// nRF24L01 CE, CS and INT pins
+enum nRF24_ADD_PINS{CE_PIN = 7, CS_PIN = 8, INT_PIN = 2};
 
-#define DEBUG 1
+#define DEBUG 0
 
 struct BMP180_COEFF
 {
@@ -66,34 +72,47 @@ struct BMP180_REGS
 	uint8_t id;
 } bmp180_regs;
 
+struct measure_data
+{
+	int32_t pressure;
+	int32_t temperature;
+	float lux;
+};
+
+// init RF24 class
+RF24 radio(CE_PIN, CS_PIN);
+// adress width (in bytes)
+#define RF24_ADDR_WIDTH 4
+// default adresses for base station and slave
+uint16_t adresses[][RF24_ADDR_WIDTH] = {0x0666, 0x7777};
+
 void setup()
 {
-	Serial.begin(115200);
+	// init i2c bus
 	Wire.begin();
+	// init BMP180 pressure sensor and read calibration table
 	bmp180_init();
 	bmp180_read_calibration();
+	// init radio
+	radio.begin();
+	radio.setChannel(127);
+	radio.setAddressWidth(RF24_ADDR_WIDTH);
+	radio.setPALevel(RF24_PA_MAX);
+	#if DEBUG
+	Serial.begin(115200);
 	Serial.println(F("BMP180 inited"));
+	#endif
 }
 
 void loop()
 {
 	uint8_t oss = 0;
-	long int pressure;
-	long int temp;
 	uint16_t lux;
-	float lux_h;
+	struct measure_data measured;
 
-	pressure = bmp180_get_pressure(oss);
-	Serial.print(F("Pressure: "));
-	Serial.print(pressure);
-	Serial.println(F(" Pa"));
-	delay(1000);
-
-	temp = bmp180_get_temp();
-	Serial.print(F("Temp: "));
-	Serial.println(temp);
-	delay(1000);
-
+	measured.pressure = bmp180_get_pressure(oss);
+	measured.temperature = bmp180_get_temp();
+	/*
 	lux = bh1750_meas_Lmode();
 	Serial.print(F("Ambient light LR: "));
 	Serial.println(lux);
@@ -103,10 +122,19 @@ void loop()
 	Serial.print(F("Ambient light HR: "));
 	Serial.println(lux);
 	delay(5000);
-
-	lux_h = bh1750_meas_H2mode();
+	*/
+	measured.lux = bh1750_meas_H2mode();
+	
+	#if DEBUG
+	Serial.print(F("Pressure: "));
+	Serial.print(measured.pressure);
+	Serial.println(F(" Pa"));
+	Serial.print(F("Temp: "));
+	Serial.println(measured.temperature);
 	Serial.print(F("Ambient light HR2: "));
-	Serial.println(lux_h);
+	Serial.println(measured.lux);
+	#endif
+
 	delay(5000);
 }
 // read 2 bytes from sensor
@@ -161,8 +189,10 @@ void bmp180_init()
 	bmp180_regs.id = bmp180_read8(BMP180_REG_ADDR_ID);
 	if (bmp180_regs.id != 0x55)
 	{
+		#if DEBUG
 		Serial.println(F("Not BMP180 device ID !!!"));
 		Serial.println(bmp180_regs.id);
+		#endif
 		return;
 	}
 	bmp180_regs.ctrl = bmp180_read8(BMP180_REG_ADDR_CTRL_MEAS);
