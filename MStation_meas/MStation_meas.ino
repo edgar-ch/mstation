@@ -3,6 +3,7 @@
 #include <RF24.h>
 #include <RF24_config.h>
 #include <Wire.h>
+#include <printf.h>
 // BMP180 read/write i2c bus addres
 #define BMP180_READ_ADDR 0xF7
 #define BMP180_WRITE_ADDR 0x77
@@ -45,8 +46,10 @@
 enum BH1750_MOD{LR = 0, HR, HR2};
 // nRF24L01 CE, CS and INT pins
 enum nRF24_ADD_PINS{CE_PIN = 7, CS_PIN = 8, INT_PIN = 2};
+// RADIO STATE
+enum nRF24_STATE{NOTHING = 0, RX = 1, TX = 2, FAIL = 3};
 
-#define DEBUG 0
+#define DEBUG 1
 
 struct BMP180_COEFF
 {
@@ -83,11 +86,19 @@ struct measure_data
 RF24 radio(CE_PIN, CS_PIN);
 // adress width (in bytes)
 #define RF24_ADDR_WIDTH 4
-// default adresses for base station and slave
-uint16_t adresses[][RF24_ADDR_WIDTH] = {0x0666, 0x7777};
+// default addresses for base station and module
+uint8_t radio_addr[][6] = {"BASEE", "MEAS1"};
+// current radio state
+volatile uint8_t radio_state = NOTHING;
+// buffer for received messages
+uint8_t r_buffer[32];
 
 void setup()
 {
+	#if DEBUG
+	Serial.begin(115200);
+	printf_begin();
+	#endif
 	// init i2c bus
 	Wire.begin();
 	// init BMP180 pressure sensor and read calibration table
@@ -96,11 +107,22 @@ void setup()
 	// init radio
 	radio.begin();
 	radio.setChannel(127);
-	radio.setAddressWidth(RF24_ADDR_WIDTH);
+	//radio.setAddressWidth(RF24_ADDR_WIDTH);
 	radio.setPALevel(RF24_PA_MAX);
+	radio.setRetries(4, 15);
+	radio.setAutoAck(true);
+	//radio.enableDynamicAck();
+	radio.enableAckPayload();
+	radio.enableDynamicPayloads();
+	radio.openWritingPipe(radio_addr[0]);
+	radio.openReadingPipe(1, radio_addr[1]);
+	radio.writeAckPayload(0, "Ok", 2);
+	//radio.printDetails();
+	radio.startListening();
+	attachInterrupt(0, radio_event, LOW);
 	#if DEBUG
-	Serial.begin(115200);
 	Serial.println(F("BMP180 inited"));
+	//Serial.println(sizeof(struct measure_data));
 	#endif
 }
 
@@ -109,6 +131,7 @@ void loop()
 	uint8_t oss = 0;
 	uint16_t lux;
 	struct measure_data measured;
+	uint8_t rxBytes;
 
 	measured.pressure = bmp180_get_pressure(oss);
 	measured.temperature = bmp180_get_temp();
@@ -124,6 +147,34 @@ void loop()
 	delay(5000);
 	*/
 	measured.lux = bh1750_meas_H2mode();
+
+	radio.stopListening();
+	//radio.openWritingPipe(radio_addr[0]);
+	radio.printDetails();
+	radio.startWrite(&measured, sizeof(struct measure_data), 0);
+	//radio.startListening();
+
+	switch (radio_state) {
+		case TX:
+			radio_state = NOTHING;
+			#if DEBUG
+			Serial.println(F("Sending data success."));
+			#endif
+			break;
+		case RX:
+			radio_state = NOTHING;
+			#if DEBUG
+			Serial.println(F("Receive failed."));
+			#endif
+			break;
+		case FAIL:
+			radio_state = NOTHING;
+			#if DEBUG
+			Serial.println(F("Receive failed"));
+			#endif
+		default:
+			break;
+	}
 	
 	#if DEBUG
 	Serial.print(F("Pressure: "));
@@ -135,8 +186,51 @@ void loop()
 	Serial.println(measured.lux);
 	#endif
 
-	delay(5000);
+	delay(50000);
 }
+
+void radio_event()
+{
+	bool tx, fail, rx;
+	uint8_t rxBytes;
+
+	radio.whatHappened(tx, fail, rx);
+
+	if (tx)
+	{
+		radio_state = TX;
+		radio.startListening();
+		if (radio.isAckPayloadAvailable())
+		{
+			// move pointer
+			#if DEBUG
+			Serial.println(F("Sending data success."));
+			#endif
+		}
+	}
+	else if (rx)
+	{
+		radio_state = RX;
+		rxBytes = radio.getDynamicPayloadSize();
+		if (rxBytes < 1)
+		{
+			#if DEBUG
+			Serial.println(F("Get corrupted data"));
+			#endif
+		}
+		else
+		{
+			radio.read(r_buffer, 32);
+		}
+		radio.writeAckPayload(0, "Ok", 2);
+	}
+	else
+	{
+		radio_state = FAIL;
+		radio.startListening();
+	}
+}
+
 // read 2 bytes from sensor
 uint16_t bmp180_read16(uint8_t reg)
 {
@@ -229,16 +323,16 @@ int32_t bmp180_read_raw_press(uint8_t oss)
 			delay(5);
 			break;
 		case 1:
-	    	delay(8);
-	    	break;
-	    case 2:
-	    	delay(14);
-	    	break;
-	    case 3:
-	    	delay(26);
-	    default:
-	    	delay(5);
-	    	break;
+			delay(8);
+			break;
+		case 2:
+			delay(14);
+			break;
+		case 3:
+			delay(26);
+		default:
+			delay(5);
+			break;
 	}
 	// read data from REGs
 	tmp = bmp180_read16(BMP180_REG_ADDR_MSB);
