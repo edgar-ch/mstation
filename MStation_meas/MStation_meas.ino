@@ -106,18 +106,18 @@ void setup()
 	bmp180_read_calibration();
 	// init radio
 	radio.begin();
-	radio.setChannel(127);
+	radio.setChannel(125);
 	//radio.setAddressWidth(RF24_ADDR_WIDTH);
-	radio.setPALevel(RF24_PA_MAX);
+	//radio.setPALevel(RF24_PA_MAX);
 	radio.setRetries(4, 15);
 	radio.setAutoAck(true);
 	//radio.enableDynamicAck();
-	radio.enableAckPayload();
+	//radio.enableAckPayload();
 	radio.enableDynamicPayloads();
 	radio.openWritingPipe(radio_addr[0]);
 	radio.openReadingPipe(1, radio_addr[1]);
-	radio.writeAckPayload(0, "Ok", 2);
-	//radio.printDetails();
+	//radio.writeAckPayload(0, "Ok", 2);
+	radio.printDetails();
 	radio.startListening();
 	attachInterrupt(0, radio_event, LOW);
 	#if DEBUG
@@ -150,9 +150,10 @@ void loop()
 
 	radio.stopListening();
 	//radio.openWritingPipe(radio_addr[0]);
-	radio.printDetails();
+	//radio.printDetails();
 	radio.startWrite(&measured, sizeof(struct measure_data), 0);
 	//radio.startListening();
+	radio.printDetails();
 
 	switch (radio_state) {
 		case TX:
@@ -199,7 +200,8 @@ void radio_event()
 	if (tx)
 	{
 		radio_state = TX;
-		radio.startListening();
+		//radio.startListening();
+		/*
 		if (radio.isAckPayloadAvailable())
 		{
 			// move pointer
@@ -207,6 +209,7 @@ void radio_event()
 			Serial.println(F("Sending data success."));
 			#endif
 		}
+		*/
 	}
 	else if (rx)
 	{
@@ -222,13 +225,13 @@ void radio_event()
 		{
 			radio.read(r_buffer, 32);
 		}
-		radio.writeAckPayload(0, "Ok", 2);
+		//radio.writeAckPayload(0, "Ok", 2);
 	}
 	else
 	{
 		radio_state = FAIL;
-		radio.startListening();
 	}
+	radio.startListening();
 }
 
 // read 2 bytes from sensor

@@ -36,16 +36,17 @@ void setup()
 	Serial.begin(115200);
 	printf_begin();
 	radio.begin();
-	radio.setChannel(127);
+	radio.setChannel(125);
 	//radio.setAddressWidth(RF24_ADDR_WIDTH);
-	radio.setPALevel(RF24_PA_MAX);
+	//radio.setPALevel(RF24_PA_MAX);
 	radio.setRetries(4, 15);
 	radio.setAutoAck(true);
-	radio.enableDynamicAck();
+	//radio.enableDynamicAck();
 	radio.enableDynamicPayloads();
 	//radio.setPayloadSize(sizeof(struct measure_data));
-	radio.openReadingPipe(1, radio_addr[1]);
-	radio.writeAckPayload(1, "Ok", 2);
+	radio.openReadingPipe(1, radio_addr[0]);
+	radio.openWritingPipe(radio_addr[1]);
+	//radio.writeAckPayload(1, "Ok", 2);
 	radio.printDetails();
 	radio.startListening();
 }
@@ -57,7 +58,7 @@ void loop()
 		while(radio.available()){
 			radio.read(&data, sizeof(struct measure_data));
 		}
-		radio.writeAckPayload(1, "Ok", 2);
+		//radio.writeAckPayload(1, "Ok", 2);
 
 		Serial.print(F("Pressure: "));
 		Serial.print(data.pressure);
