@@ -2,12 +2,26 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 #include <RF24_config.h>
-#include <printf.h>
 
-struct measure_data
+struct __attribute__((packed)) datetime
 {
+	uint8_t seconds;
+	uint8_t minutes;
+	uint8_t hours;
+	uint8_t day;
+	uint8_t date;
+	uint8_t month;
+	uint8_t year;
+};
+
+struct __attribute__((packed)) measure_data
+{
+	struct datetime mtime;
 	int32_t pressure;
 	int32_t temperature;
+	float temperature2;
+	float temperature3;
+	uint8_t humidity;
 	float lux;
 };
 
@@ -17,16 +31,14 @@ enum nRF24_STATE{NOTHING = 0, RX = 1, TX = 2, FAIL = 3};
 
 // init RF24 class
 RF24 radio(CE_PIN, CS_PIN);
-// adress width (in bytes)
-#define RF24_ADDR_WIDTH 4
 // default address for base station and modules
 uint8_t radio_addr[][6] = {"BASEE", "MEAS1"};
-// pipes addresses
-//uint32_t pipes[6] = {0xFAF1};
 // current radio state
 volatile uint8_t radio_state = NOTHING;
 // buffer for received messages
 uint8_t r_buffer[32];
+// buffer for transfer messages
+uint8_t t_buffer[32];
 
 struct measure_data data;
 
@@ -34,20 +46,14 @@ void setup()
 {
 	// init radio
 	Serial.begin(115200);
-	printf_begin();
 	radio.begin();
 	radio.setChannel(125);
-	//radio.setAddressWidth(RF24_ADDR_WIDTH);
-	//radio.setPALevel(RF24_PA_MAX);
+	radio.setPALevel(RF24_PA_MAX);
 	radio.setRetries(4, 15);
 	radio.setAutoAck(true);
-	//radio.enableDynamicAck();
 	radio.enableDynamicPayloads();
-	//radio.setPayloadSize(sizeof(struct measure_data));
 	radio.openReadingPipe(1, radio_addr[0]);
 	radio.openWritingPipe(radio_addr[1]);
-	//radio.writeAckPayload(1, "Ok", 2);
-	radio.printDetails();
 	radio.startListening();
 }
 
@@ -58,7 +64,6 @@ void loop()
 		while(radio.available()){
 			radio.read(&data, sizeof(struct measure_data));
 		}
-		//radio.writeAckPayload(1, "Ok", 2);
 
 		Serial.print(F("Pressure: "));
 		Serial.print(data.pressure);
@@ -67,5 +72,19 @@ void loop()
 		Serial.println(data.temperature);
 		Serial.print(F("Ambient light HR2: "));
 		Serial.println(data.lux);
+	}
+}
+
+void parse_message()
+{
+	switch (r_buffer[0]) {
+		case 'T':
+	    	// time request
+	    	break;
+		case 'R':
+	    	// request settings
+	    	break;
+		default:
+	    	// do something
 	}
 }

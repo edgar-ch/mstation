@@ -6,7 +6,7 @@ Arduino-based weather station
 New version (v0.2.x)
 --------------------
 
-**Currently in begining of development**  
+**Currently in begining of development. Very BAD idea to use it**  
 Will support:  
 * Measurement module:  
   * temperature measurement

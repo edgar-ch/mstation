@@ -3,99 +3,41 @@
 #include <RF24.h>
 #include <RF24_config.h>
 #include <Wire.h>
+#ifdef DEBUG
 #include <printf.h>
-// BMP180 read/write i2c bus addres
-#define BMP180_READ_ADDR 0xF7
-#define BMP180_WRITE_ADDR 0x77
-// BMP180 calibration registers addresses
-#define BMP180_REG_ADDR_AC1 0xAA
-#define BMP180_REG_ADDR_AC2 0xAC
-#define BMP180_REG_ADDR_AC3 0xAE
-#define BMP180_REG_ADDR_AC4 0xB0
-#define BMP180_REG_ADDR_AC5 0xB2
-#define BMP180_REG_ADDR_AC6 0xB4
-#define BMP180_REG_ADDR_B1 0xB6
-#define BMP180_REG_ADDR_B2 0xB8
-#define BMP180_REG_ADDR_MB 0xBA
-#define BMP180_REG_ADDR_MC 0xBC
-#define BMP180_REG_ADDR_MD 0xBE
-// BMP180 ADC and control registers addresses
-#define BMP180_REG_ADDR_XLSB 0xF8
-#define BMP180_REG_ADDR_LSB 0xF7
-#define BMP180_REG_ADDR_MSB 0xF6
-#define BMP180_REG_ADDR_CTRL_MEAS 0xF4
-#define BMP180_REG_ADDR_RES 0xE0
-#define BMP180_REG_ADDR_ID 0xD0
-// BMP180 control commands
-#define BMP180_CMD_TEMP 0x2E
-#define BMP180_CMD_PRESS 0x34
+#endif
+#include "../shared/MStation.h"
+#include "BMP180.h"
+#include "BH1750FVI.h"
 
-// BH1750 i2c bus address
-#define BH1750_ADDR 0x23
-// BH1750 commands
-#define BH1750_PWR_DOWN 0x00
-#define BH1750_PWR_ON 0x01
-#define BH1750_RESET 0x07
-#define BH1750_CONT_HR 0x10
-#define BH1750_CONT_HR2 0x11
-#define BH1750_CINT_LR 0x13
-#define BH1750_1TIME_HR 0x20
-#define BH1750_1TIME_HR2 0x21
-#define BH1750_1TIME_LR 0x23
-// BH1750 resolution mods
-enum BH1750_MOD{LR = 0, HR, HR2};
+// DS3231 I2C address
+#define DS3231_ADDR 0x68
+
 // nRF24L01 CE, CS and INT pins
 enum nRF24_ADD_PINS{CE_PIN = 7, CS_PIN = 8, INT_PIN = 2};
 // RADIO STATE
 enum nRF24_STATE{NOTHING = 0, RX = 1, TX = 2, FAIL = 3};
 
-#define DEBUG 1
-
-struct BMP180_COEFF
-{
-	int16_t ac1;
-	int16_t ac2;
-	int16_t ac3;
-	uint16_t ac4;
-	uint16_t ac5;
-	uint16_t ac6;
-	int16_t b1;
-	int16_t b2;
-	int16_t mb;
-	int16_t mc;
-	int16_t md;
-} bmp180_coeff;
-
-struct BMP180_REGS
-{
-	uint8_t xlsb;
-	uint8_t lsb;
-	uint8_t msb;
-	uint8_t ctrl;
-	uint8_t id;
-} bmp180_regs;
-
-struct measure_data
-{
-	int32_t pressure;
-	int32_t temperature;
-	float lux;
-};
-
 // init RF24 class
 RF24 radio(CE_PIN, CS_PIN);
-// adress width (in bytes)
-#define RF24_ADDR_WIDTH 4
 // default addresses for base station and module
 uint8_t radio_addr[][6] = {"BASEE", "MEAS1"};
 // current radio state
 volatile uint8_t radio_state = NOTHING;
 // buffer for received messages
 uint8_t r_buffer[32];
+// buffer for transfer messages
+uint8_t t_buffer[32];
+// current datetime
+struct datetime curr_datetime;
+// datetime is set ?
+uint8_t is_time_set = 0;
+// timeout of time request (in ms)
+unsigned int time_req_timeout = 50000;
 
 void setup()
 {
-	#if DEBUG
+	#ifdef DEBUG
 	Serial.begin(115200);
 	printf_begin();
 	#endif
@@ -107,23 +49,33 @@ void setup()
 	// init radio
 	radio.begin();
 	radio.setChannel(125);
-	//radio.setAddressWidth(RF24_ADDR_WIDTH);
-	//radio.setPALevel(RF24_PA_MAX);
+	radio.setPALevel(RF24_PA_MAX);
 	radio.setRetries(4, 15);
 	radio.setAutoAck(true);
-	//radio.enableDynamicAck();
-	//radio.enableAckPayload();
 	radio.enableDynamicPayloads();
 	radio.openWritingPipe(radio_addr[0]);
 	radio.openReadingPipe(1, radio_addr[1]);
-	//radio.writeAckPayload(0, "Ok", 2);
-	radio.printDetails();
 	radio.startListening();
-	attachInterrupt(0, radio_event, LOW);
-	#if DEBUG
+	//attachInterrupt(0, radio_event, LOW);
+	/* check for first run of DS3231 and try
+	 * to request datetime from base station
+	 * */
+	if (ds3231_is_first_run())
+	{
+		if (try_request_datetime())
+			dump_datetime(curr_datetime);
+		#ifdef DEBUG
+		dump_datetime(curr_datetime);
+		#endif
+	}
+	// read datetime
+	ds3231_init();
+	curr_datetime = ds3231_get_datetime();
+	#ifdef DEBUG
+	radio.printDetails();
 	Serial.println(F("BMP180 inited"));
-	//Serial.println(sizeof(struct measure_data));
 	#endif
+	attachInterrupt(0, radio_event, LOW);
 }
 
 void loop()
@@ -149,35 +101,31 @@ void loop()
 	measured.lux = bh1750_meas_H2mode();
 
 	radio.stopListening();
-	//radio.openWritingPipe(radio_addr[0]);
-	//radio.printDetails();
 	radio.startWrite(&measured, sizeof(struct measure_data), 0);
-	//radio.startListening();
-	radio.printDetails();
 
 	switch (radio_state) {
 		case TX:
 			radio_state = NOTHING;
-			#if DEBUG
+			#ifdef DEBUG
 			Serial.println(F("Sending data success."));
 			#endif
 			break;
 		case RX:
 			radio_state = NOTHING;
-			#if DEBUG
+			#ifdef DEBUG
 			Serial.println(F("Receive failed."));
 			#endif
 			break;
 		case FAIL:
 			radio_state = NOTHING;
-			#if DEBUG
+			#ifdef DEBUG
 			Serial.println(F("Receive failed"));
 			#endif
 		default:
 			break;
 	}
 	
-	#if DEBUG
+	#ifdef DEBUG
 	Serial.print(F("Pressure: "));
 	Serial.print(measured.pressure);
 	Serial.println(F(" Pa"));
@@ -205,7 +153,7 @@ void radio_event()
 		if (radio.isAckPayloadAvailable())
 		{
 			// move pointer
-			#if DEBUG
+			#ifdef DEBUG
 			Serial.println(F("Sending data success."));
 			#endif
 		}
@@ -217,13 +165,17 @@ void radio_event()
 		rxBytes = radio.getDynamicPayloadSize();
 		if (rxBytes < 1)
 		{
-			#if DEBUG
+			#ifdef DEBUG
 			Serial.println(F("Get corrupted data"));
 			#endif
 		}
 		else
 		{
 			radio.read(r_buffer, 32);
+			#ifdef DEBUG
+			Serial.println(F("Get some data"));
+			Serial.write(r_buffer, rxBytes);
+			#endif
 		}
 		//radio.writeAckPayload(0, "Ok", 2);
 	}
@@ -234,244 +186,140 @@ void radio_event()
 	radio.startListening();
 }
 
-// read 2 bytes from sensor
-uint16_t bmp180_read16(uint8_t reg)
+/**
+ * @brief [request time]
+ * @details [trying request time from base station]
+ * 
+ * @param long [description]
+ * @return [1 if success, 0 if fail]
+ */
+uint8_t try_request_datetime()
 {
-	uint16_t tmp;
-	// write address of register
-	Wire.beginTransmission(BMP180_WRITE_ADDR);
-	Wire.write(reg);
-	Wire.endTransmission();
-	// request 2 bytes
-	Wire.requestFrom(BMP180_READ_ADDR, 2);
-	tmp = Wire.read();
-	tmp = (tmp << 8) | Wire.read();
-	Wire.endTransmission();
-	
-	return tmp;
-}
-// read 1 byte from sensor
-uint8_t bmp180_read8(uint8_t reg)
-{
-	uint8_t tmp;
-	// write addres of register
-	Wire.beginTransmission(BMP180_WRITE_ADDR);
-	Wire.write(reg);
-	Wire.endTransmission();
-	// request 1 byte
-	Wire.requestFrom(BMP180_READ_ADDR, 1);
-	tmp = Wire.read();
-	Wire.endTransmission();
-
-	return tmp;
-}
-// read calibration table from sensor
-void bmp180_read_calibration()
-{
-	bmp180_coeff.ac1 = bmp180_read16(BMP180_REG_ADDR_AC1);
-	bmp180_coeff.ac2 = bmp180_read16(BMP180_REG_ADDR_AC2);
-	bmp180_coeff.ac3 = bmp180_read16(BMP180_REG_ADDR_AC3);
-	bmp180_coeff.ac4 = bmp180_read16(BMP180_REG_ADDR_AC4);
-	bmp180_coeff.ac5 = bmp180_read16(BMP180_REG_ADDR_AC5);
-	bmp180_coeff.ac6 = bmp180_read16(BMP180_REG_ADDR_AC6);
-	bmp180_coeff.b1 = bmp180_read16(BMP180_REG_ADDR_B1);
-	bmp180_coeff.b2 = bmp180_read16(BMP180_REG_ADDR_B2);
-	bmp180_coeff.mb = bmp180_read16(BMP180_REG_ADDR_MB);
-	bmp180_coeff.mc = bmp180_read16(BMP180_REG_ADDR_MC);
-	bmp180_coeff.md = bmp180_read16(BMP180_REG_ADDR_MD);
-}
-// check that device on this address really bmp180 sensor
-void bmp180_init()
-{
-	bmp180_regs.id = bmp180_read8(BMP180_REG_ADDR_ID);
-	if (bmp180_regs.id != 0x55)
+	unsigned long int curr_millis = millis();
+	radio.stopListening();
+	radio.write("T", 2);  // second byte for \0 character
+	radio.startListening();
+	while ((millis() - curr_millis) < time_req_timeout)
 	{
-		#if DEBUG
-		Serial.println(F("Not BMP180 device ID !!!"));
-		Serial.println(bmp180_regs.id);
-		#endif
-		return;
+		if (radio.available())
+		{
+			radio.read(r_buffer, 32);
+			if (r_buffer[0] == 'T')
+			{
+				memcpy(&curr_datetime, r_buffer + 1, sizeof(struct datetime));
+				is_time_set = 1;
+				return 1;
+			}
+		}
 	}
-	bmp180_regs.ctrl = bmp180_read8(BMP180_REG_ADDR_CTRL_MEAS);
-}
-// read raw temperature value from regs
-int32_t bmp180_read_raw_temp()
-{
-	int32_t ut;
-	// write temperature measurement command
-	Wire.beginTransmission(BMP180_WRITE_ADDR);
-	Wire.write(BMP180_REG_ADDR_CTRL_MEAS);
-	Wire.write(BMP180_CMD_TEMP);
-	Wire.endTransmission();
-	// wait
-	delay(5);
-	// read data
-	ut = bmp180_read16(BMP180_REG_ADDR_MSB);
 
-	return ut;
+	return false;
 }
-// read raw pressure value from regs
-int32_t bmp180_read_raw_press(uint8_t oss)
+
+#ifdef DEBUG
+void dump_datetime(struct datetime dt)
 {
-	uint16_t tmp;
-	int32_t up;
-	// write pressure measurement command
-	Wire.beginTransmission(BMP180_WRITE_ADDR);
-	Wire.write(BMP180_REG_ADDR_CTRL_MEAS);
-	Wire.write(BMP180_CMD_PRESS | (oss << 6));
+	Serial.println(F("DS3231 Time:"));
+	Serial.print(F("Seconds: "));
+	Serial.println(dt.seconds);
+	Serial.print(F("Minutes: "));
+	Serial.println(dt.minutes);
+	Serial.print(F("Hours: "));
+	Serial.println(dt.hours);
+	Serial.print(F("Day: "));
+	Serial.println(dt.day);
+	Serial.print(F("Date: "));
+	Serial.println(dt.date);
+	Serial.print(F("Month: "));
+	Serial.println(dt.month);
+	Serial.print(F("Year: "));
+	Serial.println(dt.year);
+}
+#endif
+
+/*
+Functions for controlling DS3231 RTC clock
+*/
+void ds3231_init()
+{
+	Wire.beginTransmission(DS3231_ADDR);
+	Wire.write(0x0E);
+	Wire.write(0x00);
+	Wire.write(0x00);
 	Wire.endTransmission();
-	// wait depend on OSS setting
-	switch (oss) {
-		case 0:
-			delay(5);
-			break;
-		case 1:
-			delay(8);
-			break;
-		case 2:
-			delay(14);
-			break;
-		case 3:
-			delay(26);
-		default:
-			delay(5);
-			break;
+}
+
+uint8_t ds3231_read_reg(uint8_t reg)
+{
+	uint8_t tmp = 0x00;
+	Wire.beginTransmission(DS3231_ADDR);
+	Wire.write(reg);
+	Wire.endTransmission();
+	Wire.requestFrom(DS3231_ADDR, 1);
+	if (Wire.available())
+	{
+		tmp = Wire.read();
 	}
-	// read data from REGs
-	tmp = bmp180_read16(BMP180_REG_ADDR_MSB);
-	up = (uint32_t) tmp << 8;
-	up |= bmp180_read8(BMP180_REG_ADDR_XLSB);
-	up = up >> (8 - oss);
-
-	return up;
-}
-// calc B5 coeff
-int32_t bmp180_calc_b5(int32_t ut)
-{
-	int32_t x1, x2, b5;
-
-	x1 = ((ut - bmp180_coeff.ac6) * bmp180_coeff.ac5) >> 15;
-	x2 = ((int32_t) bmp180_coeff.mc << 11) / (x1 + bmp180_coeff.md);
-	b5 = x1 + x2;
-
-	return b5;
-}
-// get real value of temperature
-int32_t bmp180_get_temp()
-{
-	int32_t ut, t;
-	// read raw values of regs
-	ut = bmp180_read_raw_temp();
-	// calc real temperature
-	t = (bmp180_calc_b5(ut) + 8) >> 4;
-
-	return t;
-}
-// get real value of pressure
-int32_t bmp180_get_pressure(uint8_t oss)
-{
-	int32_t ut, up, x1, x2, x3, b5, b3, b6, p;
-	uint32_t b4, b7;
-	// read raw registers values
-	ut = bmp180_read_raw_temp();
-	up = bmp180_read_raw_press(oss);
-	// doing some *__* MAGICK *v_v*
-	b5 = bmp180_calc_b5(ut);
-	b6 = b5 - 4000;
-	x1 = (bmp180_coeff.b2 * ((b6 * b6) >> 12)) >> 11;
-	x2 = (bmp180_coeff.ac2 * b6) >> 11;
-	x3 = x1 + x2;
-	b3 = ((((bmp180_coeff.ac1 * 4) + x3) << oss) + 2) >> 2;
-	x1 = (bmp180_coeff.ac3 * b6) >> 13;
-	x2 = (bmp180_coeff.b1 * ((b6 * b6) >> 12)) >> 16;
-	x3 = ((x1 + x2) + 2) >> 2;
-	b4 = (bmp180_coeff.ac4 * (uint32_t) (x3 + 32768)) >> 15;
-	b7 = ((uint32_t) up - b3) * (50000 >> oss);
-	if (b7 < 0x80000000) {
-		p = (b7 << 1) / b4;
-	} else {
-		p = (b7 / b4) >> 1;
-	}
-	x1 = (p >> 8) * (p >> 8);
-	x1 = (x1 * 3038) >> 16;
-	x2 = (-7357 * p) >> 16;
-	p = p + ((x1 + x2 + 3791) >> 4);
-
-	return p;
-}
-
-void bh1750_write_cmd(uint8_t cmd)
-{
-	Wire.beginTransmission(BH1750_ADDR);
-	Wire.write(cmd);
-	Wire.endTransmission();
-}
-
-uint16_t bh1750_read_data()
-{
-	uint16_t tmp;
-
-	Wire.requestFrom(BH1750_ADDR, 2);
-	tmp = Wire.read();
-	tmp = (tmp << 8) | Wire.read();
-	Wire.endTransmission();
 
 	return tmp;
 }
 
-uint16_t bh1750_meas_Lmode()
+uint8_t ds3231_is_first_run()
 {
-	uint16_t val, tmp;
+	uint8_t stat_reg;
+	stat_reg = ds3231_read_reg(0x0F);
 
-	bh1750_write_cmd(BH1750_PWR_ON);
-	bh1750_write_cmd(BH1750_1TIME_LR);
-	delay(24);
-	tmp = bh1750_read_data();
-	#if DEBUG
-	Serial.print(F("Raw value: "));
-	Serial.println(tmp);
-	#endif
-	val = (float) tmp / 1.2;
-	return val;
+	return (stat_reg & 0x80);
 }
 
-uint16_t bh1750_meas_Hmode()
+struct datetime ds3231_get_datetime()
 {
-	uint16_t val, tmp;
+	uint8_t seconds, minutes, hours, day, date, month, year;
+	struct datetime curr_dt;
+	// set read addr to 0x00
+	Wire.beginTransmission(DS3231_ADDR);
+	Wire.write(0x00);
+	Wire.endTransmission();
+	// request data from module
+	Wire.requestFrom(DS3231_ADDR, 7);
+	if (Wire.available())
+	{
+		seconds = Wire.read();
+		minutes = Wire.read();
+		hours = Wire.read();
+		day = Wire.read();
+		date = Wire.read();
+		month = Wire.read();
+		year = Wire.read();
+	}
+	Wire.endTransmission();
 
-	bh1750_write_cmd(BH1750_PWR_ON);
-	bh1750_write_cmd(BH1750_1TIME_HR);
-	delay(180);
-	tmp = bh1750_read_data();
-	#if DEBUG
-	Serial.print(F("Raw value: "));
-	Serial.println(tmp);
+	#ifdef DEBUG
+	Serial.println(F("DS3231 Time:"));
+	Serial.print(F("Seconds: "));
+	Serial.println(seconds);
+	Serial.print(F("Minutes: "));
+	Serial.println(minutes);
+	Serial.print(F("Hours: "));
+	Serial.println(hours);
+	Serial.print(F("Day: "));
+	Serial.println(day);
+	Serial.print(F("Date: "));
+	Serial.println(date);
+	Serial.print(F("Month: "));
+	Serial.println(month);
+	Serial.print(F("Year: "));
+	Serial.println(year);
 	#endif
-	val = (float) tmp / 1.2;
-	return val;
-}
 
-float bh1750_meas_H2mode()
-{
-	float val;
-	uint16_t tmp, fl;
+	// convert from ds3231 format to MSF-like format
+	curr_dt.seconds = (((seconds & 0xF0) >> 4) * 10) + (seconds & 0x0F);
+	curr_dt.minutes = (((minutes & 0xF0) >> 4) * 10) + (minutes & 0x0F);
+	curr_dt.hours = (((hours & 0x30) >> 4) * 10) + (hours & 0x0F);
+	curr_dt.day = day & 0x07;
+	curr_dt.date = (((date & 0x30) >> 4) * 10) + (date & 0x0F);
+	curr_dt.month = (((month & 0x01) >> 4) * 10) + (month & 0x0F);
+	curr_dt.year = (((year & 0xF0) >> 4) * 10) + (year & 0x0F);
 
-	bh1750_write_cmd(BH1750_PWR_ON);
-	bh1750_write_cmd(BH1750_1TIME_HR2);
-	delay(180);
-	tmp = bh1750_read_data();
-	#if DEBUG
-	Serial.print(F("Raw value: "));
-	Serial.println(tmp);
-	#endif
-	fl = tmp & 0x0001;
-	#if DEBUG
-	Serial.println(fl);
-	#endif
-	tmp >>= 1;
-	#if DEBUG
-	Serial.println(tmp);
-	#endif
-	val = (float) tmp / 1.2 + fl * 0.5;
-	return val;
+	return curr_dt;
 }
