@@ -60,13 +60,15 @@ void setup()
 	/* check for first run of DS3231 and try
 	 * to request datetime from base station
 	 * */
-	if (ds3231_is_first_run())
+	if (1/*ds3231_is_first_run()*/)
 	{
 		if (try_request_datetime())
+		{
+			#ifdef DEBUG
+			Serial.println(F("Trying to request datetime"));
 			dump_datetime(curr_datetime);
-		#ifdef DEBUG
-		dump_datetime(curr_datetime);
-		#endif
+			#endif
+		}
 	}
 	// read datetime
 	ds3231_init();
@@ -100,8 +102,11 @@ void loop()
 	*/
 	measured.lux = bh1750_meas_H2mode();
 
+	// prepare measurement data
+	t_buffer[0] = 'M';
+	memcpy(t_buffer + 1, &measured, sizeof(struct measure_data));
 	radio.stopListening();
-	radio.startWrite(&measured, sizeof(struct measure_data), 0);
+	radio.startWrite(t_buffer, sizeof(t_buffer), 0);
 
 	switch (radio_state) {
 		case TX:
