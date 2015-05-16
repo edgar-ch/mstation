@@ -6,7 +6,8 @@
 #ifdef DEBUG
 #include <printf.h>
 #endif
-#include "../shared/MStation.h"
+#include <Time.h> /* Not really uses, workaround for Stino */
+#include <MStation.h>
 #include "BMP180.h"
 #include "BH1750FVI.h"
 
@@ -66,7 +67,7 @@ void setup()
 		{
 			#ifdef DEBUG
 			Serial.println(F("Trying to request datetime"));
-			dump_datetime(curr_datetime);
+			print_datetime_serial(curr_datetime);
 			#endif
 		}
 	}
@@ -220,9 +221,9 @@ uint8_t try_request_datetime()
 
 	return false;
 }
-
+/*
 #ifdef DEBUG
-void dump_datetime(struct datetime dt)
+void print_datetime_serial(struct datetime dt)
 {
 	Serial.println(F("DS3231 Time:"));
 	Serial.print(F("Seconds: "));
@@ -241,7 +242,7 @@ void dump_datetime(struct datetime dt)
 	Serial.println(dt.year);
 }
 #endif
-
+*/
 /*
 Functions for controlling DS3231 RTC clock
 */

@@ -3,7 +3,7 @@
 #include <RF24.h>
 #include <RF24_config.h>
 #include <Time.h>
-#include "../shared/MStation.h"
+#include <MStation.h>
 
 enum nRF24_ADD_PINS{CE_PIN = 7, CS_PIN = 8, INT_PIN = 2};
 // RADIO STATE
@@ -56,7 +56,10 @@ void loop()
 			curr_datetime.date = day(ct);
 			curr_datetime.month = month(ct);
 			curr_datetime.year = year(ct) - 2000;
-			dump_datetime(curr_datetime);
+			#ifdef DEBUG
+			Serial.println(F("Get time from serial"));
+			print_datetime_serial(curr_datetime);
+			#endif
 		}
 	}
 	if (radio.available())
@@ -82,7 +85,7 @@ void parse_message()
 	    	break;
 	    case 'M':
 	    	// get measurement data, send to serial
-	    	memcpy(&data, r_buffer, sizeof(struct measure_data));
+	    	memcpy(&data, r_buffer + 1, sizeof(struct measure_data));
 	    	send_measured_to_serial();
 	    	break;
 		default:
@@ -92,7 +95,11 @@ void parse_message()
 }
 
 void send_time_to_module()
-{
+{	
+	#ifdef DEBUG
+	Serial.println(F("Sending time to module"));
+	print_datetime_serial(curr_datetime);
+	#endif
 	t_buffer[0] = 'T';
 	memcpy(t_buffer + 1, &curr_datetime, sizeof(struct datetime));
 	radio.stopListening();
@@ -109,23 +116,4 @@ void send_measured_to_serial()
 	Serial.println(data.temperature);
 	Serial.print(F("Ambient light HR2: "));
 	Serial.println(data.lux);
-}
-
-void dump_datetime(struct datetime dt)
-{
-	//Serial.println(F("DS3231 Time:"));
-	Serial.print(F("Seconds: "));
-	Serial.println(dt.seconds);
-	Serial.print(F("Minutes: "));
-	Serial.println(dt.minutes);
-	Serial.print(F("Hours: "));
-	Serial.println(dt.hours);
-	Serial.print(F("Day: "));
-	Serial.println(dt.day);
-	Serial.print(F("Date: "));
-	Serial.println(dt.date);
-	Serial.print(F("Month: "));
-	Serial.println(dt.month);
-	Serial.print(F("Year: "));
-	Serial.println(dt.year);
 }

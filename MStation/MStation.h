@@ -23,3 +23,6 @@ struct __attribute__((packed)) measure_data
 	float lux;
 };
 
+/* Headers for shared functions
+ * */
+void print_datetime_serial(struct datetime);
