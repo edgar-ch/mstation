@@ -109,6 +109,7 @@ void send_time_to_module()
 
 void send_measured_to_serial()
 {
+	print_datetime_serial(data.mtime);
 	Serial.print(F("Pressure: "));
 	Serial.print(data.pressure);
 	Serial.println(F(" Pa"));
