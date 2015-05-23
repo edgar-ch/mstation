@@ -8,6 +8,7 @@
 #endif
 #include <Time.h> /* Not really uses, workaround for Stino */
 #include <MStation.h>
+#include <SD.h>
 #include "BMP180.h"
 #include "BH1750FVI.h"
 #include "DS3231.h"
@@ -33,6 +34,12 @@ struct datetime curr_datetime;
 uint8_t is_time_set = 0;
 // timeout of time request (in millis)
 unsigned int time_req_timeout = 30000;
+// file for measured data
+File meas_file;
+// last position in file, which was sended
+uint32_t sended_pos = 0;
+// events flags
+uint8_t meas_occured = 0, send_occured = 0;
 
 void setup()
 {
@@ -72,6 +79,10 @@ void setup()
 	// read datetime
 	ds3231_init();
 	curr_datetime = ds3231_get_datetime();
+	// init SD card
+	SD.begin(4);
+	meas_file = SD.open("meas.dat", FILE_WRITE);
+	sended_pos = meas_file.position();
 	#ifdef DEBUG
 	print_datetime_serial(curr_datetime);
 	radio.printDetails();
@@ -92,9 +103,14 @@ void loop()
 	measured.lux = bh1750_meas_H2mode();
 	measured.mtime = ds3231_get_datetime();
 
+	// write data to SD
+	meas_file.write((uint8_t *) &measured, sizeof(struct measure_data));
+	meas_file.flush();
+
 	// prepare measurement data
 	t_buffer[0] = 'M';
 	memcpy(t_buffer + 1, &measured, sizeof(struct measure_data));
+	// and send it to radio
 	radio.stopListening();
 	radio.startWrite(t_buffer, sizeof(t_buffer), 0);
 

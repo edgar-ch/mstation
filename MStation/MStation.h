@@ -16,7 +16,7 @@ struct __attribute__((packed)) measure_data
 {
 	struct datetime mtime;
 	int32_t pressure;
-	int32_t temperature;
+	float temperature;
 	float temperature2;
 	float temperature3;
 	uint8_t humidity;
