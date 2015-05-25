@@ -23,6 +23,12 @@ struct __attribute__((packed)) measure_data
 	float lux;
 };
 
+struct __attribute__((packed)) file_entry
+{
+	struct measure_data m_data;
+	uint8_t is_sended;
+};
+
 /* Headers for shared functions
  * */
 void print_datetime_serial(struct datetime);
