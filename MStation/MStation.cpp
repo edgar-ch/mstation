@@ -24,3 +24,20 @@ void print_datetime_serial(struct datetime dt)
 	Serial.print(' ');
 	Serial.println(dayShortStr(dt.day));
 }
+
+void print_measured_serial(struct measure_data *md)
+{
+	print_datetime_serial(md->mtime);
+	Serial.print(md->pressure);
+	Serial.write(';');
+	Serial.print(md->temperature);
+	Serial.write(';');
+	Serial.print(md->temperature2);
+	Serial.write(';');
+	Serial.print(md->temperature3);
+	Serial.write(';');
+	Serial.print(md->humidity);
+	Serial.write(';');
+	Serial.print(md->lux);
+	Serial.println();
+}

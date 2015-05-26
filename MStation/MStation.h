@@ -29,6 +29,16 @@ struct __attribute__((packed)) file_entry
 	uint8_t is_sended;
 };
 
+// Measurement module settings
+struct __attribute__((packed)) module_settings
+{
+	uint16_t meas_period;
+	uint8_t sensors_prec;
+	uint8_t is_sleep_enable;
+	uint8_t radio_channel;
+};
+
 /* Headers for shared functions
  * */
 void print_datetime_serial(struct datetime);
+void print_measured_serial(struct measure_data *);
