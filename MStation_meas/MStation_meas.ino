@@ -12,6 +12,7 @@
 #include <stddef.h>
 #include <OneWire.h>
 #include <dht.h>
+#include <EEPROM.h>
 #include "BMP180.h"
 #include "BH1750FVI.h"
 #include "DS3231.h"
@@ -22,6 +23,9 @@
 #define DS18B20_ID 0x28
 // DHT22 sensor pin
 #define DHT22_PIN 6
+// EEPROM offsets
+#define HAS_CONFIG_FLAG 0
+#define CONF_STRUCT 1
 
 // nRF24L01 CE, CS and INT pins
 enum nRF24_ADD_PINS{CE_PIN = 7, CS_PIN = 8, INT_PIN = 2};
@@ -75,6 +79,8 @@ uint32_t curr_pos = 0;
 uint32_t prev_pos = 0;
 // current state
 STATES currState = INIT;
+// module settings
+struct module_settings conf;
 
 // DS18B20
 OneWire ds(DS18B20_PIN);
@@ -88,11 +94,16 @@ dht DHT22;
 
 void setup()
 {
-	pinMode(4, OUTPUT);
 	#ifdef DEBUG
 	Serial.begin(115200);
 	printf_begin();
 	#endif
+	// check conf in EEPROM
+	if (EEPROM.read(HAS_CONFIG_FLAG) == 0)
+	{
+		write_conf_to_EEPROM();
+		EEPROM.write(HAS_CONFIG_FLAG, 1);
+	}
 	// init i2c bus
 	Wire.begin();
 	// init BMP180 pressure sensor and read calibration table
@@ -101,7 +112,6 @@ void setup()
 	// init SD card
 	SD.begin(4, 2);
 	// init radio
-	digitalWrite(4, HIGH);
 	radio.begin();
 	radio.setChannel(125);
 	radio.setPALevel(RF24_PA_MAX);
@@ -137,6 +147,7 @@ void setup()
 	// init SD card
 	meas_file = SD.open("meas.dat", FILE_WRITE);
 	curr_pos = meas_file.position();
+	prev_pos = curr_pos;
 	not_sended_pos = curr_pos;
 	// search DS18B20
 	getAddrDS18B20();
@@ -182,7 +193,7 @@ void loop()
 		data_entry.m_data = measured;
 		data_entry.is_sended = 0;
 		meas_file.seek(curr_pos);
-		meas_file.write((uint8_t *) &measured, sizeof(struct file_entry));
+		meas_file.write((uint8_t *) &data_entry, sizeof(struct file_entry));
 		meas_file.flush();
 		curr_pos = meas_file.position();
 		currState = SEND_LATEST_DATA;
@@ -207,16 +218,17 @@ void loop()
 	{
 		switch (radio_state) {
 			case TX_SUCCESS:
-				// move file pointer and set flag
-				set_sended(not_sended_pos);
-				not_sended_pos += sizeof(struct file_entry);
 				// if we have not sended data
-				if (not_sended_pos != curr_pos)
+				if (not_sended_pos < prev_pos)
 				{
+					// move file pointer and set flag
+					set_sended(not_sended_pos);
+					not_sended_pos += sizeof(struct file_entry);
 					currState = SEND_DATA;
 				}
-				else
+				if (not_sended_pos == prev_pos)
 				{
+					set_sended(prev_pos);
 					not_sended_pos = curr_pos;
 					radio_state = LISTEN;
 					currState = PREPARE_SLEEP;
@@ -244,13 +256,16 @@ void loop()
 		Serial.println(F("Sending previous data"));
 		#endif
 		data_entry = read_entry(not_sended_pos);
-		// prepare measurement data
-		t_buffer[0] = 'M';
-		memcpy(t_buffer + 1, &(data_entry.m_data), sizeof(struct measure_data));
-		// and send it to radio
-		radio_state = NOW_SENDING;
-		currState = WAIT_FOR_SEND;
-		radio.startWrite(t_buffer, sizeof(t_buffer), 0);
+		if (data_entry.is_sended == 0)
+		{
+			// prepare measurement data
+			t_buffer[0] = 'M';
+			memcpy(t_buffer + 1, &(data_entry.m_data), sizeof(struct measure_data));
+			// and send it to radio
+			radio_state = NOW_SENDING;
+			currState = WAIT_FOR_SEND;
+			radio.startWrite(t_buffer, sizeof(t_buffer), 0);
+		}
 	}
 
 	if (currState == PREPARE_SLEEP)
@@ -420,4 +435,14 @@ boolean getTempDS18B20()
 	ds18_temp = ((data[1] << 8) | data[0]) * 0.0625; // convert temperature
 	
 	return true;
+}
+
+void write_conf_to_EEPROM()
+{
+	uint8_t i;
+
+	for (i = 0; i < sizeof(struct module_settings); i++)
+	{
+		EEPROM.write(CONF_STRUCT + i, *((uint8_t *) &conf + i));
+	}
 }

@@ -86,7 +86,7 @@ void parse_message()
 	    case 'M':
 	    	// get measurement data, send to serial
 	    	memcpy(&data, r_buffer + 1, sizeof(struct measure_data));
-	    	send_measured_to_serial();
+			print_measured_serial(&data);
 	    	break;
 		default:
 	    	// do something
@@ -105,16 +105,4 @@ void send_time_to_module()
 	radio.stopListening();
 	radio.write(t_buffer, 32);
 	radio.startListening();
-}
-
-void send_measured_to_serial()
-{
-	print_datetime_serial(data.mtime);
-	Serial.print(F("Pressure: "));
-	Serial.print(data.pressure);
-	Serial.println(F(" Pa"));
-	Serial.print(F("Temp: "));
-	Serial.println(data.temperature);
-	Serial.print(F("Ambient light HR2: "));
-	Serial.println(data.lux);
 }

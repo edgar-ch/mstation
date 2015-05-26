@@ -32,10 +32,10 @@ struct __attribute__((packed)) file_entry
 // Measurement module settings
 struct __attribute__((packed)) module_settings
 {
-	uint16_t meas_period;
-	uint8_t sensors_prec;
-	uint8_t is_sleep_enable;
-	uint8_t radio_channel;
+	uint16_t meas_period = 300; // in seconds
+	uint8_t sensors_prec = 3; // 0 - low, 1 - medium, 2 - high, 3 - very high
+	uint8_t is_sleep_enable = 0; // disabled by default
+	uint8_t radio_channel = 127; // default channel
 };
 
 /* Headers for shared functions
