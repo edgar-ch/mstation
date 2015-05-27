@@ -16,16 +16,11 @@ from logging.handlers import WatchedFileHandler
 import threading
 import requests
 from requests.exceptions import *
+import ConfigParser
+import json
 
-LOG_PATH = '/var/log/mstation.log'
 LOG_FORMAT = '[%(asctime)s] %(levelname)s: %(funcName)s: %(message)s'
-SERIAL_DEV = '/dev/ttyACM0'
-FTP_SERV = 'ftp_serv'
-FTP_NAME = 'ftp_name'
-FTP_PASS = 'ftp_password'
-DATA_PATH = '/usr/local/MStation/data/'
-CONNECT_TRYOUT = 10
-UPLOAD_URL = 'upload_handler'
+CONF_PATH = 'mstation_serv.cfg'
 # OpenWeatherMap
 URL_OPENW = 'http://openweathermap.org/data/post'
 LATITUDE = 56.3294
@@ -41,21 +36,65 @@ upload_lock = threading.Lock()
 
 failed_upload = []
 
-log = logging.getLogger('main_log')
-log.setLevel(logging.INFO)
-log_handler = WatchedFileHandler(LOG_PATH)
-log_fmt = logging.Formatter(fmt=LOG_FORMAT)
-log_handler.setFormatter(log_fmt)
-log.addHandler(log_handler)
+config = ConfigParser.SafeConfigParser()
+config.read(CONF_PATH)
+
+func_stat = {
+    'FTP': True,
+    'URL': True,
+    'OpenWeather': False
+}
+
+all_settings = {
+    'MAIN': {
+        'log_path': '/var/log/mstation.log',
+        'serial_dev': '/dev/ttyACM0',
+        'serial_speed': 115200,
+        'connect_tryout': 10,
+        'data_path': '/usr/local/MStation/data/'
+    },
+    'FTP': {
+        'ftp_serv': None,
+        'ftp_passw': None,
+        'ftp_name': None,
+        'ftp_path': None
+    },
+    'URL': {
+        'upload_url': None
+    }
+}
+
+data_head = ['date', 'press', 'temp1', 'temp2', 'temp3', 'humid', 'lux']
+
+
+def init_logger(log_path='mstation.log'):
+    global log
+    log = logging.getLogger('main_log')
+    log.setLevel(logging.INFO)
+    log_handler = WatchedFileHandler(log_path)
+    log_fmt = logging.Formatter(fmt=LOG_FORMAT)
+    log_handler.setFormatter(log_fmt)
+    log.addHandler(log_handler)
 
 
 def main():
     signal.signal(signal.SIGINT, ctrl_c_handler)
-    f_name = datetime.datetime.now().strftime('%Y-%m-%d.cvs')
-    f_path = DATA_PATH + f_name
+
+    if config.has_option('MAIN', 'log_path'):
+        init_logger(config.get('MAIN', 'log_path'))
+    else:
+        init_logger()
+    parse_conf()
+
+    SERIAL_DEV = all_settings['MAIN']['serial_dev']
+    SERIAL_SPEED = all_settings['MAIN']['serial_speed']
+    CONNECT_TRYS = all_settings['MAIN']['connect_tryout']
+
+    f_name = datetime.datetime.now().strftime('%Y-%m-%d.json')
+    f_path = all_settings['MAIN']['data_path'] + f_name
     f_table = open(f_path, 'a', 0)
 
-    ser = serial_connect(SERIAL_DEV, 115200)
+    ser = serial_connect(SERIAL_DEV, SERIAL_SPEED)
 
     init_patt = re.compile(r'MStation')
     curr_date = datetime.date.today()
@@ -66,7 +105,7 @@ def main():
         except SerialException as e:
             log.error('Serial error: ' + str(e))
             time.sleep(120)
-            ser = serial_connect(SERIAL_DEV, 115200)
+            ser = serial_connect(SERIAL_DEV, SERIAL_SPEED, CONNECT_TRYS)
             continue
 
         init_match = re.search(init_patt, curr)
@@ -76,41 +115,53 @@ def main():
             continue
         if curr_date.day != datetime.date.today().day:
             f_table.close()
-            f_name = datetime.datetime.now().strftime('%Y-%m-%d.cvs')
+            f_name = datetime.datetime.now().strftime('%Y-%m-%d.json')
             f_path = DATA_PATH + f_name
             f_table = open(f_path, 'a', 0)
             curr_date = datetime.date.today()
-
-        date_str = datetime.datetime.now().strftime('%Y/%m/%d %H:%M')
-        final_str = date_str + ',' + curr
-
-        ftp_thread = threading.Thread(
-            target=upload_to_ftp,
-            args=(FTP_SERV, FTP_NAME, FTP_PASS, f_name)
-        )
-        upl_thread = threading.Thread(
-            target=upload_to_site,
-            args=(UPLOAD_URL, final_str)
-        )
-        openw_thread = threading.Thread(
-            target=upload_to_openweathermap,
-            args=[final_str]
+#       date_str = datetime.datetime.now().strftime('%Y/%m/%d %H:%M')
+#       final_str = date_str + ',' + curr
+        data_dict = dict(zip(curr.split(','), data_head))
+        final_str = json.dumps(
+            data_dict,
+            sort_keys=True
         )
 
         write_lock.acquire()
         f_table.write(final_str)
         write_lock.release()
-        ftp_thread.start()
-        upl_thread.start()
-        openw_thread.start()
+
+        if func_stat['FTP']:
+            ftp_thread = threading.Thread(
+                target=upload_to_ftp,
+                args=(
+                    all_settings['FTP']['ftp_serv'],
+                    all_settings['FTP']['ftp_name'],
+                    all_settings['FTP']['ftp_name'],
+                    f_name
+                )
+            )
+            ftp_thread.start()
+        if func_stat['URL']:
+            upl_thread = threading.Thread(
+                target=upload_to_site,
+                args=(all_settings['URL']['upload_url'], data_dict)
+            )
+            upl_thread.start()
+        if func_stat['OpenWeather']:
+            openw_thread = threading.Thread(
+                target=upload_to_openweathermap,
+                args=[final_str]
+            )
+            openw_thread.start()
 
     sys.exit(0)
 
 
-def serial_connect(dev, speed):
+def serial_connect(dev, speed, tryouts=5):
     try_count = 1
 
-    while try_count <= CONNECT_TRYOUT:
+    while try_count <= tryouts:
         try:
             ser = serial.Serial(dev, speed)
         except SerialException as e:
@@ -125,6 +176,52 @@ def serial_connect(dev, speed):
 
     log.critical('FAIL to connect. Exit.')
     sys.exit(-1)
+
+
+def parse_conf(filename='mstation_serv.cfg'):
+    if not config.has_section('MAIN'):
+        log.error('Not have MAIN section in config')
+        safe_quit()
+
+    try:
+        all_settings['MAIN']['serial_dev'] = config.get('MAIN', 'serial_dev')
+        all_settings['MAIN']['serial_speed'] = config.getint(
+            'MAIN',
+            'serial_speed'
+        )
+        all_settings['MAIN']['connect_tryout'] = config.getint(
+            'MAIN',
+            'connect_tryout'
+        )
+        all_settings['MAIN']['data_path'] = config.get('MAIN', 'data_path')
+    except ConfigParser.NoOptionError as e:
+        log.error('Not found required option' + str(e))
+        safe_quit()
+
+    try:
+        all_settings['FTP']['ftp_serv'] = config.get('FTP', 'ftp_serv')
+        all_settings['FTP']['ftp_name'] = config.get('FTP', 'ftp_name')
+        all_settings['FTP']['ftp_passw'] = config.get('FTP', 'ftp_passw')
+        all_settings['FTP']['ftp_path'] = config.get('FTP', 'ftp_path')
+    except ConfigParser.NoOptionError as e:
+        log.error('Not found required option for FTP' + str(e))
+        func_stat['FTP'] = False
+    except ConfigParser.NoSectionError as e:
+        log.error('Not found FTP settings' + str(e))
+        func_stat['FTP'] = False
+    else:
+        func_stat['FTP'] = True
+
+    try:
+        all_settings['URL']['upload_url'] = config.get('URL', 'upload_url')
+    except ConfigParser.NoOptionError as e:
+        log.error('Not found required option for URL' + str(e))
+        func_stat['URL'] = False
+    except ConfigParser.NoSectionError as e:
+        log.error('Not found settings for URL' + str(e))
+        func_stat['URL'] = False
+    else:
+        func_stat['URL'] = True
 
 
 def upload_to_ftp(host, name, passw, f_name):
@@ -175,27 +272,19 @@ class uplFail(Exception):
         return repr(self.value)
 
 
-def upload_to_site(url, data_str):
-    if not upload_to_url(url, data_str):
-        failed_upload.append(data_str)
+def upload_to_site(url, data):
+    if not upload_to_url(url, data):
+        failed_upload.append(data)
     else:
         if upload_lock.acquire(False):
             while len(failed_upload) != 0:
-                data = failed_upload[0]
-                if upload_to_url(url, data):
+                data_old = failed_upload[0]
+                if upload_to_url(url, data_old):
                     failed_upload.pop(0)
             upload_lock.release()
 
 
-def upload_to_url(url, data_str):
-    data_send = data_str.split(',')
-    data_req = {
-        'date': data_send[0],
-        'temp1': data_send[1],
-        'temp2': data_send[2],
-        'humid': data_send[3]
-    }
-
+def upload_to_url(url, data_req):
     try:
         req = requests.post(url, data=data_req, timeout=60)
     except (ConnectionError, HTTPError, URLRequired, Timeout) as e:
@@ -240,6 +329,11 @@ def upload_to_openweathermap(data_str):
 
 
 def ctrl_c_handler(signum, frame):
+    log.info('Get Ctrl-C.')
+    safe_quit()
+
+
+def safe_quit():
     print 'Exit.'
     log.info('Exit.')
     logging.shutdown()
