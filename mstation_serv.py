@@ -90,14 +90,11 @@ def main():
     SERIAL_SPEED = all_settings['MAIN']['serial_speed']
     CONNECT_TRYS = all_settings['MAIN']['connect_tryout']
 
-    f_name = datetime.datetime.now().strftime('%Y-%m-%d.json')
-    f_path = all_settings['MAIN']['data_path'] + f_name
-    f_table = open(f_path, 'a', 0)
-
     ser = serial_connect(SERIAL_DEV, SERIAL_SPEED)
 
     init_patt = re.compile(r'MStation')
-    curr_date = datetime.date.today()
+    time_patt = re.compile(r'T{1,1}')
+    meas_patt = re.compile(r'^MEAS:')
 
     while True:
         try:
@@ -108,54 +105,69 @@ def main():
             ser = serial_connect(SERIAL_DEV, SERIAL_SPEED, CONNECT_TRYS)
             continue
 
-        init_match = re.search(init_patt, curr)
+        init_match = re.match(init_patt, curr)
+        time_match = re.match(time_patt, curr)
+        meas_match = re.match(meas_patt, curr)
 
         if init_match:
             log.info(curr)
             continue
-        if curr_date.day != datetime.date.today().day:
-            f_table.close()
-            f_name = datetime.datetime.now().strftime('%Y-%m-%d.json')
-            f_path = DATA_PATH + f_name
-            f_table = open(f_path, 'a', 0)
-            curr_date = datetime.date.today()
-#       date_str = datetime.datetime.now().strftime('%Y/%m/%d %H:%M')
-#       final_str = date_str + ',' + curr
-        data_dict = dict(zip(curr.split(','), data_head))
-        final_str = json.dumps(
-            data_dict,
-            sort_keys=True
-        )
-
-        write_lock.acquire()
-        f_table.write(final_str)
-        write_lock.release()
-
-        if func_stat['FTP']:
-            ftp_thread = threading.Thread(
-                target=upload_to_ftp,
-                args=(
-                    all_settings['FTP']['ftp_serv'],
-                    all_settings['FTP']['ftp_name'],
-                    all_settings['FTP']['ftp_name'],
-                    f_name
-                )
-            )
-            ftp_thread.start()
-        if func_stat['URL']:
-            upl_thread = threading.Thread(
-                target=upload_to_site,
-                args=(all_settings['URL']['upload_url'], data_dict)
-            )
-            upl_thread.start()
-        if func_stat['OpenWeather']:
-            openw_thread = threading.Thread(
-                target=upload_to_openweathermap,
-                args=[final_str]
-            )
-            openw_thread.start()
+        if time_match:
+            try:
+                ser.write(datetime.datetime.now().strftime('T%s'))
+            except SerialTimeoutException as e:
+                log.error('Fail to send time to serial' + str(e))
+            else:
+                log.info('Send time to serial success')
+            continue
+        if meas_match:
+            curr = meas_patt.sub('', curr)
+            process_meas_data(curr)
+            continue
+        log.info('Get from serial:' + str(curr))
 
     sys.exit(0)
+
+
+def process_meas_data(meas_string):
+    f_name = datetime.datetime.now().strftime('%Y-%m-%d.json')
+    f_path = all_settings['MAIN']['data_path'] + f_name
+    f_table = open(f_path, 'a', 0)
+
+    data_dict = dict(zip(meas_string.split(','), data_head))
+    final_str = json.dumps(
+        data_dict,
+        sort_keys=True
+    )
+
+    write_lock.acquire()
+    f_table.write(final_str)
+    f_table.close()
+    write_lock.release()
+
+    if func_stat['FTP']:
+        ftp_thread = threading.Thread(
+            target=upload_to_ftp,
+            args=(
+                all_settings['FTP']['ftp_serv'],
+                all_settings['FTP']['ftp_name'],
+                all_settings['FTP']['ftp_name'],
+                f_path
+            )
+        )
+        ftp_thread.start()
+    if func_stat['URL']:
+        upl_thread = threading.Thread(
+            target=upload_to_site,
+            args=(all_settings['URL']['upload_url'], data_dict)
+        )
+        upl_thread.start()
+    if func_stat['OpenWeather']:
+        openw_thread = threading.Thread(
+            target=upload_to_openweathermap,
+            args=[final_str]
+        )
+        openw_thread.start()
 
 
 def serial_connect(dev, speed, tryouts=5):
@@ -170,6 +182,7 @@ def serial_connect(dev, speed, tryouts=5):
             time.sleep(120)
         else:
             log.info('Connected after ' + str(try_count) + ' tryouts')
+            ser.writeTimeout = 10
             return ser
         finally:
             try_count += 1

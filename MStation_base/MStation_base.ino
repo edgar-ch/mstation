@@ -21,7 +21,6 @@ uint8_t r_buffer[32];
 uint8_t t_buffer[32];
 
 struct measure_data data;
-struct datetime curr_datetime;
 
 void setup()
 {
@@ -36,29 +35,22 @@ void setup()
 	radio.openReadingPipe(1, radio_addr[0]);
 	radio.openWritingPipe(radio_addr[1]);
 	radio.startListening();
+	setSyncProvider(request_time);
+	setSyncInterval(600);
 }
 
 void loop()
 {
 	uint8_t in_byte;
-	time_t ct;
 
 	if (Serial.available() > 0)
 	{
-		in_byte = Serial.read();
+		in_byte = Serial.peek();
 		if (in_byte == 'T')
 		{
-			ct = Serial.parseInt();
-			curr_datetime.seconds = second(ct);
-			curr_datetime.minutes = minute(ct);
-			curr_datetime.hours = hour(ct);
-			curr_datetime.day = weekday(ct);
-			curr_datetime.date = day(ct);
-			curr_datetime.month = month(ct);
-			curr_datetime.year = year(ct) - 2000;
+			proc_time_msg();
 			#ifdef DEBUG
 			Serial.println(F("Get time from serial"));
-			print_datetime_serial(curr_datetime);
 			#endif
 		}
 	}
@@ -94,15 +86,52 @@ void parse_message()
 	}
 }
 
+struct datetime conv_time(time_t curr)
+{
+	struct datetime curr_datetime;
+
+	curr_datetime.seconds = second(curr);
+	curr_datetime.minutes = minute(curr);
+	curr_datetime.hours = hour(curr);
+	curr_datetime.day = weekday(curr);
+	curr_datetime.date = day(curr);
+	curr_datetime.month = month(curr);
+	curr_datetime.year = year(curr) - 2000;
+}
+
 void send_time_to_module()
 {	
+	struct datetime curr;
+
+	curr = conv_time(now());
 	#ifdef DEBUG
 	Serial.println(F("Sending time to module"));
-	print_datetime_serial(curr_datetime);
+	print_datetime_serial(curr);
 	#endif
 	t_buffer[0] = 'T';
-	memcpy(t_buffer + 1, &curr_datetime, sizeof(struct datetime));
+	memcpy(t_buffer + 1, &curr, sizeof(struct datetime));
 	radio.stopListening();
 	radio.write(t_buffer, 32);
 	radio.startListening();
+}
+
+time_t request_time()
+{
+	Serial.println('T');
+	return 0;
+}
+
+void proc_time_msg()
+{
+	unsigned long received_time;
+	const unsigned long def_time = 1430427600UL;
+
+	if (Serial.find("T"))
+	{
+		received_time = Serial.parseInt();
+		if (received_time >= def_time)
+		{
+			setTime(received_time);
+		}
+	}
 }

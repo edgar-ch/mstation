@@ -10,7 +10,7 @@
  */
 void print_datetime_serial(struct datetime dt)
 {
-	Serial.print(dt.year);
+	Serial.print(BASE_YEAR + dt.year);
 	Serial.print('/');
 	Serial.print(dt.month);
 	Serial.print('/');
@@ -20,13 +20,14 @@ void print_datetime_serial(struct datetime dt)
 	Serial.print(':');
 	Serial.print(dt.minutes);
 	Serial.print(':');
-	Serial.print(dt.seconds);
-	Serial.print(' ');
-	Serial.println(dayShortStr(dt.day));
+	Serial.println(dt.seconds);
+	//Serial.print(' ');
+	//Serial.println(dayShortStr(dt.day));
 }
 
 void print_measured_serial(struct measure_data *md)
 {
+	Serial.print("MEAS:");
 	print_datetime_serial(md->mtime);
 	Serial.print(md->pressure);
 	Serial.write(';');

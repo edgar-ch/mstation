@@ -1,3 +1,5 @@
+#define BASE_YEAR 2000
+
 /* Shared structures for base and measurement modules 
  * */
 
