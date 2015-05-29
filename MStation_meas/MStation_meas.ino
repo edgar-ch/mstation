@@ -145,7 +145,7 @@ void setup()
 	ds3231_init();
 	curr_datetime = ds3231_get_datetime();
 	// init SD card
-	meas_file = SD.open("meas.dat", FILE_WRITE);
+	meas_file.open("meas.dat", O_RDWR | O_AT_END);
 	curr_pos = meas_file.position();
 	prev_pos = curr_pos;
 	not_sended_pos = curr_pos;
@@ -192,10 +192,10 @@ void loop()
 		prev_pos = curr_pos;
 		data_entry.m_data = measured;
 		data_entry.is_sended = 0;
-		meas_file.seek(curr_pos);
-		meas_file.write((uint8_t *) &data_entry, sizeof(struct file_entry));
-		meas_file.flush();
-		curr_pos = meas_file.position();
+		meas_file.seekSet(curr_pos);
+		meas_file.write(&data_entry, sizeof(struct file_entry));
+		meas_file.sync();
+		curr_pos = meas_file.curPosition();
 		currState = SEND_LATEST_DATA;
 	}
 
@@ -365,16 +365,16 @@ void set_sended(uint32_t pos)
 
 struct file_entry read_entry(uint32_t pos)
 {
-	uint8_t tmp_array[sizeof(struct file_entry)];
+	//uint8_t tmp_array[sizeof(struct file_entry)];
 	struct file_entry tmp;
-
+	/*
 	for(uint32_t i = pos; i < (pos + sizeof(struct file_entry)); i++)
 	{
 		tmp_array[i] = meas_file.read();
-	}
-
-	meas_file.seek(pos);
-	memcpy(&tmp, tmp_array, sizeof(struct file_entry));
+	}*/
+	meas_file.read(&tmp, sizeof(struct file_entry));
+	meas_file.seekSet(pos);
+	//memcpy(&tmp, tmp_array, sizeof(struct file_entry));
 	return tmp;
 }
 

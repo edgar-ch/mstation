@@ -36,7 +36,8 @@ void setup()
 	radio.openWritingPipe(radio_addr[1]);
 	radio.startListening();
 	setSyncProvider(request_time);
-	setSyncInterval(600);
+	request_time();
+	//setSyncInterval(600);
 }
 
 void loop()
@@ -51,6 +52,8 @@ void loop()
 			proc_time_msg();
 			#ifdef DEBUG
 			Serial.println(F("Get time from serial"));
+			print_datetime_serial(conv_time(now()));
+			Serial.println();
 			#endif
 		}
 	}
@@ -97,6 +100,8 @@ struct datetime conv_time(time_t curr)
 	curr_datetime.date = day(curr);
 	curr_datetime.month = month(curr);
 	curr_datetime.year = year(curr) - 2000;
+
+	return curr_datetime;
 }
 
 void send_time_to_module()
@@ -107,6 +112,7 @@ void send_time_to_module()
 	#ifdef DEBUG
 	Serial.println(F("Sending time to module"));
 	print_datetime_serial(curr);
+	Serial.println();
 	#endif
 	t_buffer[0] = 'T';
 	memcpy(t_buffer + 1, &curr, sizeof(struct datetime));
@@ -132,6 +138,10 @@ void proc_time_msg()
 		if (received_time >= def_time)
 		{
 			setTime(received_time);
+		}
+		else
+		{
+			setTime(def_time);
 		}
 	}
 }

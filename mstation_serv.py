@@ -134,7 +134,7 @@ def process_meas_data(meas_string):
     f_path = all_settings['MAIN']['data_path'] + f_name
     f_table = open(f_path, 'a', 0)
 
-    data_dict = dict(zip(meas_string.split(','), data_head))
+    data_dict = dict(zip(data_head, meas_string.split(',')))
     final_str = json.dumps(
         data_dict,
         sort_keys=True
@@ -152,7 +152,7 @@ def process_meas_data(meas_string):
                 all_settings['FTP']['ftp_serv'],
                 all_settings['FTP']['ftp_name'],
                 all_settings['FTP']['ftp_name'],
-                f_path
+                f_name
             )
         )
         ftp_thread.start()
@@ -238,7 +238,7 @@ def parse_conf(filename='mstation_serv.cfg'):
 
 
 def upload_to_ftp(host, name, passw, f_name):
-    path = DATA_PATH + f_name
+    path = all_settings['MAIN']['data_path'] + f_name
     upl_file = open(path, 'rb')
     name_new = f_name + '.new'
     try:
