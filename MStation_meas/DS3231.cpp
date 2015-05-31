@@ -141,30 +141,39 @@ void ds3231_set_alarm2(struct alarm_conf *dt, ALARM_MODE mask)
 	Wire.endTransmission();
 }
 
-void ds3231_alarm2_ctrl(ALARM2_CFG cfg)
+void ds3231_alarm2_ctrl(uint8_t is_enable)
 {
 	uint8_t reg;
 
-	reg = ds3231_read_reg(0x0E);
-	if (cfg == A2_ENABLE)
-		reg |= _BV(2);
-	if (cfg == A2_DISABLE)
-		reg &= ~(_BV(2));
+	reg = ds3231_read_reg(DS3231_CTR_ADDR);
+	if (is_enable)
+		reg |= _BV(1);
+	else
+		reg &= ~(_BV(1));
 
-	ds3231_write_reg(0x0E, reg);
+	ds3231_write_reg(DS3231_CTR_ADDR, reg);
 }
 
 void ds3231_ctrl_INT(uint8_t enable)
 {
 	uint8_t reg;
 
-	reg = ds3231_read_reg(0x0E);
+	reg = ds3231_read_reg(DS3231_CTR_ADDR);
 	if (enable)
-		reg |= _BV(3);
+		reg |= _BV(2);
 	else
-		reg &= ~(_BV(3));
+		reg &= ~(_BV(2));
 
-	ds3231_write_reg(0x0E, reg);
+	ds3231_write_reg(DS3231_CTR_ADDR, reg);
+}
+
+void ds3231_clear_alarm2()
+{
+	uint8_t reg;
+
+	reg = ds3231_read_reg(DS3231_STAT_ADDR);
+	bitClear(reg, 1);
+	ds3231_write_reg(DS3231_STAT_ADDR, reg);
 }
 
 #ifdef DEBUG

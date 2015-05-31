@@ -315,7 +315,7 @@ void loop()
 	{
 		set_alarm();
 		ds3231_ctrl_INT(1);
-		ds3231_dump_cfg();
+		ds3231_clear_alarm2();
 		//attachInterrupt(1, alarm_int, FALLING);
 		if (!conf.is_sleep_enable)
 		{
@@ -560,8 +560,5 @@ void set_alarm()
 	Serial.println(minutes);
 	#endif
 	ds3231_set_alarm2(&aconf, A2_MINUTES_MATCH);
-	ds3231_dump_alarm2();
-	ds3231_dump_cfg();
-	ds3231_alarm2_ctrl(A2_ENABLE);
-	ds3231_dump_cfg();
+	ds3231_alarm2_ctrl(true);
 }
