@@ -10,7 +10,7 @@ void ds3231_init()
 {
 	Wire.beginTransmission(DS3231_ADDR);
 	Wire.write(0x0E);
-	Wire.write(0x00);
+	Wire.write(0x04);
 	Wire.write(0x00);
 	Wire.endTransmission();
 }
@@ -28,6 +28,14 @@ uint8_t ds3231_read_reg(uint8_t reg)
 	}
 
 	return tmp;
+}
+
+uint8_t ds3231_write_reg(uint8_t addr, uint8_t reg)
+{
+	Wire.beginTransmission(DS3231_ADDR);
+	Wire.write(addr);
+	Wire.write(reg);
+	Wire.endTransmission();
 }
 
 uint8_t ds3231_is_first_run()
@@ -106,7 +114,89 @@ void ds3231_set_datetime(struct datetime dt)
 	Wire.endTransmission();
 }
 
-inline uint8_t dec2bcd(uint8_t dec)
+void ds3231_set_alarm2(struct alarm_conf *dt, ALARM_MODE mask)
+{
+	uint8_t minutes, hour, date_day;
+
+	minutes = dec2bcd(dt->minute);
+	hour = dec2bcd(dt->hour);
+	date_day = dec2bcd(dt->date_day);
+
+	if (mask & 0x02)
+		minutes |= _BV(7);
+	if (mask & 0x04)
+		hour |= _BV(7);
+	if (mask & 0x10)
+		date_day |= _BV(6);
+	if (mask & 0x08)
+		date_day |= _BV(7);
+
+	Wire.beginTransmission(DS3231_ADDR);
+	// set write addr to 0x0B
+	Wire.write(DS3231_A2_ADDR);
+	// write data
+	Wire.write(minutes);
+	Wire.write(hour);
+	Wire.write(date_day);
+	Wire.endTransmission();
+}
+
+void ds3231_alarm2_ctrl(ALARM2_CFG cfg)
+{
+	uint8_t reg;
+
+	reg = ds3231_read_reg(0x0E);
+	if (cfg == A2_ENABLE)
+		reg |= _BV(2);
+	if (cfg == A2_DISABLE)
+		reg &= ~(_BV(2));
+
+	ds3231_write_reg(0x0E, reg);
+}
+
+void ds3231_ctrl_INT(uint8_t enable)
+{
+	uint8_t reg;
+
+	reg = ds3231_read_reg(0x0E);
+	if (enable)
+		reg |= _BV(3);
+	else
+		reg &= ~(_BV(3));
+
+	ds3231_write_reg(0x0E, reg);
+}
+
+#ifdef DEBUG
+void ds3231_dump_alarm2()
+{
+	uint8_t a2_1, a2_2, a2_3;
+
+	Wire.beginTransmission(DS3231_ADDR);
+	Wire.write(DS3231_A2_ADDR);
+	Wire.endTransmission();
+	Wire.requestFrom(DS3231_ADDR, 3);
+	if (Wire.available())
+	{
+		a2_1 = Wire.read();
+		a2_2 = Wire.read();
+		a2_3 = Wire.read();
+	}
+	Serial.println(a2_1, HEX);
+	Serial.println(a2_2, HEX);
+	Serial.println(a2_3, HEX);
+}
+
+void ds3231_dump_cfg()
+{
+	uint8_t reg;
+
+	reg = ds3231_read_reg(0x0E);
+	Serial.println(reg, HEX);
+}
+#endif
+
+uint8_t dec2bcd(uint8_t dec)
 {
 	return (((dec / 10) << 4) | (dec % 10));
 }

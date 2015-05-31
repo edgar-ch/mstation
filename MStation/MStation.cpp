@@ -43,3 +43,21 @@ void print_measured_serial(struct measure_data *md)
 	Serial.print(md->lux);
 	Serial.println();
 }
+
+/**
+ * @brief [sum 2 numbers by module]
+ * @details [sum 2 numbers by module, its usefull for
+ * add measurement period to current minutes]
+ * 
+ * @param a [a]
+ * @param b [b]
+ * @param mod [module]
+ * @return [result of a + b by module mod]
+ */
+uint8_t sum_mod(uint8_t a, uint8_t b, uint8_t mod)
+{
+	if ((a + b >= mod) || (a + b < b))
+		return a + b - mod;
+	else
+		return a + b;
+}

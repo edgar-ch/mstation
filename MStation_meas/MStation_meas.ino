@@ -36,7 +36,8 @@ enum nRF24_RADIO_EVENTS
 	TX_SUCCESS,
 	TX_FAIL,
 	NOW_SENDING,
-	LISTEN
+	LISTEN,
+	ACK_MSG
 };
 // states of measurement and data
 enum STATES
@@ -49,6 +50,7 @@ enum STATES
 	PARSE_RX_DATA,
 	RADIO_EVENT,
 	WAIT_FOR_SEND,
+	WAIT_FOR_TIMEOUT,
 	PREPARE_SLEEP
 };
 
@@ -59,6 +61,8 @@ RF24 radio(CE_PIN, CS_PIN);
 uint8_t radio_addr[][6] = {"BASEE", "MEAS1"};
 // current radio state
 volatile nRF24_RADIO_EVENTS radio_state = LISTEN;
+// has ACK payload
+volatile uint8_t has_ack_payload = 0;
 // buffer for received messages
 uint8_t r_buffer[32];
 // buffer for transfer messages
@@ -79,8 +83,12 @@ uint32_t curr_pos = 0;
 uint32_t prev_pos = 0;
 // current state
 STATES currState = INIT;
+// previous state
+STATES prevState = currState;
 // module settings
 struct module_settings conf;
+// timeout flag
+volatile uint8_t get_timeout = 0;
 
 // DS18B20
 OneWire ds(DS18B20_PIN);
@@ -101,7 +109,7 @@ void setup()
 	// check conf in EEPROM
 	if (EEPROM.read(HAS_CONFIG_FLAG) == 0)
 	{
-		write_conf_to_EEPROM();
+		write_conf_to_EEPROM(&conf);
 		EEPROM.write(HAS_CONFIG_FLAG, 1);
 	}
 	// init i2c bus
@@ -117,13 +125,14 @@ void setup()
 	radio.setPALevel(RF24_PA_MAX);
 	radio.setRetries(4, 15);
 	radio.setAutoAck(true);
+	radio.enableAckPayload();
 	radio.enableDynamicPayloads();
-	radio.openWritingPipe(radio_addr[0]);
+	radio.openWritingPipe(radio_addr[1]);
 	radio.openReadingPipe(1, radio_addr[1]);
 	#ifdef DEBUG
 	radio.printDetails();
 	#endif
-	radio.startListening();
+	send_addr_to_base();
 	/* check for first run of DS3231 and try
 	 * to request datetime from base station
 	 * */
@@ -141,9 +150,8 @@ void setup()
 			ds3231_set_datetime(curr_datetime);
 		}
 	}
-	// read datetime
+	// init and start DS3231
 	ds3231_init();
-	curr_datetime = ds3231_get_datetime();
 	// init SD card
 	meas_file.open("meas.dat", O_RDWR | O_AT_END);
 	curr_pos = meas_file.position();
@@ -152,17 +160,19 @@ void setup()
 	// search DS18B20
 	getAddrDS18B20();
 	#ifdef DEBUG
+	curr_datetime = ds3231_get_datetime();
 	print_datetime_serial(curr_datetime);
 	Serial.println(F("BMP180 inited"));
 	#endif
+	radio.startListening();
 	attachInterrupt(0, radio_event, LOW);
+	attachInterrupt(1, alarm_int, FALLING);
 	currState = MEAS_TIME;
 }
 
 void loop()
 {
 	uint8_t oss = 0;
-	uint16_t lux;
 	struct measure_data measured;
 	struct file_entry data_entry;
 
@@ -170,14 +180,15 @@ void loop()
 	if (currState == MEAS_TIME)
 	{
 		measured.pressure = bmp180_get_pressure(oss);
-		measured.temperature = bmp180_get_temp();
+		measured.temperature = bmp180_get_temp() * 0.1;
 		measured.lux = bh1750_meas_H2mode();
-		measured.mtime = ds3231_get_datetime();
 		getTempDS18B20();
 		measured.temperature2 = ds18_temp;
 		DHT22.read22(DHT22_PIN);
 		measured.temperature3 = DHT22.temperature;
 		measured.humidity = DHT22.humidity;
+		curr_datetime = ds3231_get_datetime();
+		measured.mtime = curr_datetime;
 		#ifdef DEBUG
 		print_measured_serial(&measured);
 		#endif
@@ -245,8 +256,17 @@ void loop()
 				#ifdef DEBUG
 				Serial.println(F("Sending data failed"));
 				#endif
+				break;
 			default:
 				break;
+		}
+		if (has_ack_payload)
+		{
+			prevState = currState;
+			currState = PARSE_RX_DATA;
+			#ifdef DEBUG
+			Serial.println(F("Get ACK payload"));
+			#endif
 		}
 	}
 
@@ -268,21 +288,59 @@ void loop()
 		}
 	}
 
+	if (currState == WAIT_FOR_TIMEOUT)
+	{
+		if (get_timeout)
+		{
+			currState = MEAS_TIME;
+			get_timeout = 0;
+		}
+		switch (radio_state) {
+			case 'RX_MSG':
+				prevState = currState;
+				currState = PARSE_RX_DATA;
+				break;
+			default:
+				break;
+		}
+	}
+
+	if (currState == PARSE_RX_DATA)
+	{
+		parse_rx_data();
+		currState = prevState;
+	}
+
 	if (currState == PREPARE_SLEEP)
 	{
-		#ifdef DEBUG
-		Serial.println(F("Fake sleep"));
-		#endif
-		// doing fake sleep
-		delay(30000);
-		currState = MEAS_TIME;
+		set_alarm();
+		ds3231_ctrl_INT(1);
+		ds3231_dump_cfg();
+		//attachInterrupt(1, alarm_int, FALLING);
+		if (!conf.is_sleep_enable)
+		{
+			currState = WAIT_FOR_TIMEOUT;
+			#ifdef DEBUG
+			Serial.println(F("Wait for meas timeout"));
+			#endif
+		}
+		else
+		{
+			#ifdef DEBUG
+			Serial.println(F("Fake sleep"));
+			#endif
+			/* in this place we will sleep */
+			// doing fake sleep
+			delay(30000);
+			currState = MEAS_TIME;
+			get_timeout = 0;
+		}
 	}
 }
 
 void radio_event()
 {
 	bool tx, fail, rx;
-	//uint8_t rxBytes;
 
 	radio.whatHappened(tx, fail, rx);
 
@@ -290,31 +348,24 @@ void radio_event()
 	{
 		radio_state = TX_SUCCESS;
 	}
-	else if (rx)
+	if (rx)
 	{
 		radio_state = RX_MSG;
-		/*
-		rxBytes = radio.getDynamicPayloadSize();
-		if (rxBytes < 1)
-		{
-			#ifdef DEBUG
-			Serial.println(F("Get corrupted data"));
-			#endif
-		}
-		else
-		{
-			radio.read(r_buffer, 32);
-			#ifdef DEBUG
-			Serial.println(F("Get some data"));
-			Serial.write(r_buffer, rxBytes);
-			#endif
-		}
-		*/
 	}
-	else
+	if (fail)
 	{
 		radio_state = TX_FAIL;
 	}
+	if (tx && rx)
+	{
+		radio_state = TX_SUCCESS;
+		has_ack_payload = 1;
+	}
+}
+
+void alarm_int()
+{
+	get_timeout = 1;
 }
 
 /**
@@ -356,25 +407,64 @@ uint8_t try_request_datetime()
 	return 0;
 }
 
+void parse_rx_data()
+{
+	uint8_t rxBytes;
+
+	rxBytes = radio.getDynamicPayloadSize();
+	if (rxBytes > 0)
+	{
+		radio.read(r_buffer, 32);
+		switch (r_buffer[0]) {
+			case 'S':
+				// get settings
+				memcpy(
+					&conf,
+					r_buffer + 1,
+					sizeof(struct module_settings)
+				);
+				write_conf_to_EEPROM(&conf);
+				#ifdef DEBUG
+				Serial.println(F("Get config from radio"));
+				#endif
+				break;
+		    case 'T':
+				// do something
+				memcpy(
+					&curr_datetime,
+					r_buffer + 1,
+					sizeof(curr_datetime)
+				);
+				ds3231_set_datetime(curr_datetime);
+				#ifdef DEBUG
+				Serial.println(F("Get time from radio"));
+				print_datetime_serial(curr_datetime);
+				#endif
+				break;
+			case 'A':
+				send_addr_to_base();
+				break;
+			default:
+				// do something
+				break;
+		}
+	}
+}
+
 void set_sended(uint32_t pos)
 {
-	meas_file.seek(pos + offsetof(file_entry, is_sended));
+	meas_file.seekSet(pos + offsetof(file_entry, is_sended));
 	meas_file.write((uint8_t) 1);
-	meas_file.seek(pos);
+	meas_file.seekSet(pos);
 }
 
 struct file_entry read_entry(uint32_t pos)
 {
-	//uint8_t tmp_array[sizeof(struct file_entry)];
 	struct file_entry tmp;
-	/*
-	for(uint32_t i = pos; i < (pos + sizeof(struct file_entry)); i++)
-	{
-		tmp_array[i] = meas_file.read();
-	}*/
+
 	meas_file.read(&tmp, sizeof(struct file_entry));
 	meas_file.seekSet(pos);
-	//memcpy(&tmp, tmp_array, sizeof(struct file_entry));
+
 	return tmp;
 }
 
@@ -437,7 +527,7 @@ boolean getTempDS18B20()
 	return true;
 }
 
-void write_conf_to_EEPROM()
+void write_conf_to_EEPROM(struct module_settings *conf)
 {
 	uint8_t i;
 
@@ -445,4 +535,33 @@ void write_conf_to_EEPROM()
 	{
 		EEPROM.write(CONF_STRUCT + i, *((uint8_t *) &conf + i));
 	}
+}
+
+void send_addr_to_base()
+{
+	t_buffer[0] = 'A';
+	memcpy(t_buffer + 1, &(radio_addr[1]), 6);
+	radio.stopListening();
+	radio.write(t_buffer, 7);
+	radio.startListening();
+}
+
+void set_alarm()
+{
+	struct alarm_conf aconf;
+	uint8_t minutes;
+
+	minutes = curr_datetime.minutes;
+	minutes = sum_mod(minutes, conf.meas_period, 60);
+	aconf.minute = minutes;
+
+	#ifdef DEBUG
+	Serial.print(F("Set alarm 2 to: "));
+	Serial.println(minutes);
+	#endif
+	ds3231_set_alarm2(&aconf, A2_MINUTES_MATCH);
+	ds3231_dump_alarm2();
+	ds3231_dump_cfg();
+	ds3231_alarm2_ctrl(A2_ENABLE);
+	ds3231_dump_cfg();
 }

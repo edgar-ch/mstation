@@ -12,7 +12,7 @@ enum nRF24_STATE{NOTHING = 0, RX = 1, TX = 2, FAIL = 3};
 // init RF24 class
 RF24 radio(CE_PIN, CS_PIN);
 // default address for base station and modules
-uint8_t radio_addr[][6] = {"BASEE", "MEAS1"};
+uint8_t base_radio_addr[] = {"BASEE"};
 // current radio state
 volatile uint8_t radio_state = NOTHING;
 // buffer for received messages
@@ -21,9 +21,20 @@ uint8_t r_buffer[32];
 uint8_t t_buffer[32];
 
 struct measure_data data;
+// slots for connected modules
+struct meas_module modules[5];
+
+uint8_t pipeNum;
 
 void setup()
 {
+	// by default has only one module with preset addr
+	modules[0].is_present = 1;
+	memcpy(
+		modules[0].address,
+		"MEAS1",
+		6
+	);
 	// init radio
 	Serial.begin(115200);
 	radio.begin();
@@ -31,9 +42,17 @@ void setup()
 	radio.setPALevel(RF24_PA_MAX);
 	radio.setRetries(4, 15);
 	radio.setAutoAck(true);
+	radio.enableAckPayload();
 	radio.enableDynamicPayloads();
-	radio.openReadingPipe(1, radio_addr[0]);
-	radio.openWritingPipe(radio_addr[1]);
+	radio.openReadingPipe(0, base_radio_addr);
+	for (int i = 0; i < 5; i++)
+	{
+		if (modules[i].is_present)
+		{
+			radio.openReadingPipe(i + 1, modules[i].address);
+		}
+	}
+	//radio.openWritingPipe(radio_addr[1]);
 	radio.startListening();
 	setSyncProvider(request_time);
 	request_time();
@@ -57,35 +76,52 @@ void loop()
 			#endif
 		}
 	}
-	if (radio.available())
+	if (radio.available(&pipeNum))
 	{
-		while(radio.available())
+		radio.read(&r_buffer, sizeof(r_buffer));
+		if (pipeNum == 0)
 		{
-			radio.read(&r_buffer, sizeof(r_buffer));
+			if (r_buffer[0] == 'A')
+			{
+				Serial.print("Get ADDR from module: ");
+				Serial.write(t_buffer + 1, 6);
+				Serial.println();
+			}
 		}
-		parse_message();
+		else
+		{
+			parse_message(pipeNum - 1);
+		}
 	}
 }
 
-void parse_message()
+void parse_message(uint8_t num)
 {
 	switch (r_buffer[0])
 	{
 		case 'T':
 	    	// time request, send time
-	    	send_time_to_module();
-	    	break;
-		case 'R':
-	    	// request settings
-	    	break;
-	    case 'M':
+			send_time_to_module(num);
+			break;
+		case 'A':
+			// request settings
+			Serial.print("Get address from module: ");
+			Serial.write(r_buffer + 1, 6);
+			Serial.println();
+			break;
+		case 'M':
 	    	// get measurement data, send to serial
-	    	memcpy(&data, r_buffer + 1, sizeof(struct measure_data));
-			print_measured_serial(&data);
-	    	break;
+			memcpy(
+				&(modules[num].m_data),
+				r_buffer + 1,
+				sizeof(struct measure_data)
+			);
+			modules[num].has_data = 1;
+			print_measured_serial(&(modules[num].m_data));
+			break;
 		default:
-	    	// do something
-	    	break;
+			// do something
+			break;
 	}
 }
 
@@ -104,7 +140,7 @@ struct datetime conv_time(time_t curr)
 	return curr_datetime;
 }
 
-void send_time_to_module()
+void send_time_to_module(uint8_t num)
 {	
 	struct datetime curr;
 
@@ -116,6 +152,7 @@ void send_time_to_module()
 	#endif
 	t_buffer[0] = 'T';
 	memcpy(t_buffer + 1, &curr, sizeof(struct datetime));
+	radio.openWritingPipe(modules[num].address);
 	radio.stopListening();
 	radio.write(t_buffer, 32);
 	radio.startListening();
