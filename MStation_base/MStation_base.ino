@@ -5,6 +5,8 @@
 #include <Time.h>
 #include <MStation.h>
 
+#define PIPES_TOTAL 5
+
 enum nRF24_ADD_PINS{CE_PIN = 7, CS_PIN = 8, INT_PIN = 2};
 // RADIO STATE
 enum nRF24_STATE{NOTHING = 0, RX = 1, TX = 2, FAIL = 3};
@@ -21,8 +23,12 @@ uint8_t r_buffer[32];
 uint8_t t_buffer[32];
 
 struct measure_data data;
-// slots for connected modules
+/* slots for connected modules
+ * Note: individual settings are not supported
+ * */
 struct meas_module modules[5];
+struct module_settings mod_conf;
+uint8_t send_settings_flag = 0;
 
 uint8_t pipeNum;
 
@@ -61,19 +67,33 @@ void setup()
 
 void loop()
 {
-	uint8_t in_byte;
+	char in_byte;
+	uint8_t i;
 
 	if (Serial.available() > 0)
 	{
-		in_byte = Serial.peek();
-		if (in_byte == 'T')
-		{
-			proc_time_msg();
-			#ifdef DEBUG
-			Serial.println(F("Get time from serial"));
-			print_datetime_serial(conv_time(now()));
-			Serial.println();
-			#endif
+		in_byte = Serial.read();
+		switch (in_byte) {
+			case 'T':
+				proc_time_msg();
+				#ifdef DEBUG
+				Serial.println(F("Get time from serial"));
+				print_datetime_serial(conv_time(now()));
+				Serial.println();
+				#endif
+				break;
+			case 'S':
+				/* FIXME: 
+				wait for whole string, dirty hack, but it works */
+				delay(2);
+				proc_cmd();
+				break;
+			default:
+				#ifdef DEBUG
+				Serial.println(F("Get unknown data"));
+				#endif
+				Serial.read();
+				break;
 		}
 	}
 	if (radio.available(&pipeNum))
@@ -84,7 +104,7 @@ void loop()
 			if (r_buffer[0] == 'A')
 			{
 				Serial.print("Get ADDR from module: ");
-				Serial.write(t_buffer + 1, 6);
+				Serial.write(t_buffer + 1, 5);
 				Serial.println();
 			}
 		}
@@ -92,6 +112,27 @@ void loop()
 		{
 			parse_message(pipeNum - 1);
 		}
+	}
+	if (send_settings_flag)
+	{
+		t_buffer[0] = 'S';
+		memcpy(t_buffer + 1, &mod_conf, sizeof(struct module_settings));
+
+		for (i = 0; i < PIPES_TOTAL; i++)
+		{
+			if (modules[i].is_present)
+			{
+				#ifdef DEBUG
+				Serial.print(F("Send settings to pipe "));
+				Serial.println(i);
+				#endif
+				radio.openWritingPipe(modules[i].address);
+				radio.stopListening();
+				radio.write(t_buffer, 32);
+				radio.startListening();
+			}
+		}
+		send_settings_flag = 0;
 	}
 }
 
@@ -169,16 +210,47 @@ void proc_time_msg()
 	unsigned long received_time;
 	const unsigned long def_time = 1430427600UL;
 
-	if (Serial.find("T"))
+	received_time = Serial.parseInt();
+	if (received_time >= def_time)
 	{
-		received_time = Serial.parseInt();
-		if (received_time >= def_time)
-		{
-			setTime(received_time);
-		}
-		else
-		{
-			setTime(def_time);
-		}
+		setTime(received_time);
+	}
+	else
+	{
+		setTime(def_time);
+	}
+}
+
+void proc_cmd()
+{
+	uint8_t cmd;
+
+	cmd = Serial.read();
+	#ifdef DEBUG
+	Serial.print(F("Get CMD: "));
+	Serial.println(cmd);
+	#endif
+	switch (cmd) {
+		case 'S':
+			mod_conf.is_sleep_enable = Serial.parseInt();
+			#ifdef DEBUG
+			Serial.print(F("Get sleep cmd "));
+			Serial.println(mod_conf.is_sleep_enable);
+			#endif
+			send_settings_flag = 1;
+			break;
+		case 'T':
+			mod_conf.meas_period = Serial.parseInt();
+			#ifdef DEBUG
+			Serial.print(F("Get meas_period "));
+			Serial.println(mod_conf.meas_period);
+			#endif
+			send_settings_flag = 1;
+			break;
+		case -1:
+			#ifdef DEBUG
+			Serial.println(F("Not CMD"));
+			#endif
+			break;
 	}
 }

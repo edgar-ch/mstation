@@ -10,6 +10,7 @@
 #include <MStation.h>
 #include <SdFat.h>
 #include <stddef.h>
+#include <avr/sleep.h>
 #include <OneWire.h>
 #include <dht.h>
 #include <EEPROM.h>
@@ -99,6 +100,10 @@ float ds18_temp;
 
 // DHT22 sensor
 dht DHT22;
+
+#ifdef DEBUG
+volatile uint8_t test_rx = 0;
+#endif
 
 void setup()
 {
@@ -296,7 +301,7 @@ void loop()
 			get_timeout = 0;
 		}
 		switch (radio_state) {
-			case 'RX_MSG':
+			case RX_MSG:
 				prevState = currState;
 				currState = PARSE_RX_DATA;
 				break;
@@ -307,7 +312,11 @@ void loop()
 
 	if (currState == PARSE_RX_DATA)
 	{
+		#ifdef DEBUG
+		Serial.println(F("Get message !"));
+		#endif
 		parse_rx_data();
+		radio_state = LISTEN;
 		currState = prevState;
 	}
 
@@ -326,16 +335,29 @@ void loop()
 		}
 		else
 		{
+			radio.powerDown();
+			set_sleep_mode(SLEEP_MODE_PWR_DOWN);
 			#ifdef DEBUG
-			Serial.println(F("Fake sleep"));
+			Serial.println(F("Begin sleep"));
 			#endif
 			/* in this place we will sleep */
-			// doing fake sleep
-			delay(30000);
+			sleep_mode();
+			#ifdef DEBUG
+			Serial.println(F("Wake up from sleep"));
+			#endif
 			currState = MEAS_TIME;
 			get_timeout = 0;
+			radio.startListening();
 		}
 	}
+
+	#ifdef DEBUG
+	if (test_rx)
+	{
+		Serial.println(F("Get RX"));
+		test_rx = 0;
+	}
+	#endif
 }
 
 void radio_event()
@@ -351,6 +373,9 @@ void radio_event()
 	if (rx)
 	{
 		radio_state = RX_MSG;
+		#ifdef DEBUG
+		test_rx = 1;
+		#endif
 	}
 	if (fail)
 	{
