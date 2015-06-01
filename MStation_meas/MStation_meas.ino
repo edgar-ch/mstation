@@ -117,6 +117,11 @@ void setup()
 		write_conf_to_EEPROM(&conf);
 		EEPROM.write(HAS_CONFIG_FLAG, 1);
 	}
+	// read conf from EEPROM
+	read_conf_from_EEPROM(&conf);
+	#ifdef DEBUG
+	dump_conf_to_serial(&conf);
+	#endif
 	// init i2c bus
 	Wire.begin();
 	// init BMP180 pressure sensor and read calibration table
@@ -130,8 +135,8 @@ void setup()
 	radio.setPALevel(RF24_PA_MAX);
 	radio.setRetries(4, 15);
 	radio.setAutoAck(true);
-	radio.enableAckPayload();
 	radio.enableDynamicPayloads();
+	radio.enableAckPayload();
 	radio.openWritingPipe(radio_addr[1]);
 	radio.openReadingPipe(1, radio_addr[1]);
 	#ifdef DEBUG
@@ -272,6 +277,7 @@ void loop()
 			#ifdef DEBUG
 			Serial.println(F("Get ACK payload"));
 			#endif
+			has_ack_payload = 0;
 		}
 	}
 
@@ -347,6 +353,7 @@ void loop()
 			#endif
 			currState = MEAS_TIME;
 			get_timeout = 0;
+			radio.powerUp();
 			radio.startListening();
 		}
 	}
@@ -558,7 +565,18 @@ void write_conf_to_EEPROM(struct module_settings *conf)
 
 	for (i = 0; i < sizeof(struct module_settings); i++)
 	{
-		EEPROM.write(CONF_STRUCT + i, *((uint8_t *) &conf + i));
+		EEPROM.write(CONF_STRUCT + i, *((uint8_t *) conf + i));
+	}
+}
+
+void read_conf_from_EEPROM(struct module_settings *conf)
+{
+	uint8_t i;
+	uint8_t *conf_byte_ptr = (uint8_t *) conf;
+
+	for (i = 0; i < sizeof(struct module_settings); i++, conf_byte_ptr++)
+	{
+		*conf_byte_ptr = EEPROM.read(CONF_STRUCT + i);
 	}
 }
 

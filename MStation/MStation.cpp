@@ -61,3 +61,14 @@ uint8_t sum_mod(uint8_t a, uint8_t b, uint8_t mod)
 	else
 		return a + b;
 }
+
+void dump_conf_to_serial(struct module_settings *conf)
+{
+	Serial.println(F("Config:"));
+	Serial.print(F("period = "));
+	Serial.println(conf->meas_period);
+	Serial.print(F("sleep = "));
+	Serial.println(conf->is_sleep_enable);
+	Serial.print(F("prec = "));
+	Serial.println(conf->sensors_prec);
+}

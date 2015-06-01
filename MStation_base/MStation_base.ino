@@ -48,8 +48,8 @@ void setup()
 	radio.setPALevel(RF24_PA_MAX);
 	radio.setRetries(4, 15);
 	radio.setAutoAck(true);
-	radio.enableAckPayload();
 	radio.enableDynamicPayloads();
+	radio.enableAckPayload();
 	radio.openReadingPipe(0, base_radio_addr);
 	for (int i = 0; i < 5; i++)
 	{
@@ -128,7 +128,13 @@ void loop()
 				#endif
 				radio.openWritingPipe(modules[i].address);
 				radio.stopListening();
-				radio.write(t_buffer, 32);
+				if (!radio.write(t_buffer, 32))
+				{
+					#ifdef DEBUG
+					Serial.println(F("Send failed, write to ACK"));
+					#endif
+					radio.writeAckPayload(i + 1, t_buffer, 32);
+				}
 				radio.startListening();
 			}
 		}
@@ -195,7 +201,10 @@ void send_time_to_module(uint8_t num)
 	memcpy(t_buffer + 1, &curr, sizeof(struct datetime));
 	radio.openWritingPipe(modules[num].address);
 	radio.stopListening();
-	radio.write(t_buffer, 32);
+	if (!radio.write(t_buffer, 32))
+	{
+		radio.writeAckPayload(num, t_buffer, 32);
+	}
 	radio.startListening();
 }
 

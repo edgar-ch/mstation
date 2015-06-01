@@ -54,3 +54,4 @@ struct __attribute__((packed)) meas_module
 void print_datetime_serial(struct datetime);
 void print_measured_serial(struct measure_data *);
 uint8_t sum_mod(uint8_t, uint8_t, uint8_t);
+void dump_conf_to_serial(struct module_settings *);
