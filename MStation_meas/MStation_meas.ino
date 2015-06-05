@@ -235,12 +235,6 @@ void loop()
 			currState = SEND_DATA;
 			break;
 		case SUCCESS:
-			cli();
-			radio_state = LISTEN;
-			sei();
-			radio.startListening();
-			currState = PREPARE_SLEEP;
-			break;
 		case FAILED:
 			cli();
 			radio_state = LISTEN;
@@ -332,7 +326,7 @@ void write_to_sd()
 	#ifdef DEBUG
 	Serial.println(F("Write measured to SD"));
 	#endif
-	prev_pos = curr_pos;
+	//prev_pos = curr_pos;
 	data_entry.m_data = measured;
 	data_entry.is_sended = 0;
 	meas_file.seekSet(curr_pos);
@@ -343,15 +337,15 @@ void write_to_sd()
 
 void send_latest_data()
 {
-	#ifdef DEBUG
-	Serial.println(F("Send data to base station"));
-	#endif
 	// prepare measurement data
 	t_buffer[0] = 'M';
 	memcpy(t_buffer + 1, &measured, sizeof(struct measure_data));
 	// and send it to radio
 	radio.stopListening();
 	radio.startWrite(t_buffer, sizeof(t_buffer), 0);
+	#ifdef DEBUG
+	Serial.println(F("Send data to base station"));
+	#endif
 }
 
 uint8_t wait_for_send()
@@ -361,18 +355,17 @@ uint8_t wait_for_send()
 			#ifdef DEBUG
 			Serial.println(F("Sending data success."));
 			#endif
-			// if we have not sended data
-			if (not_sended_pos < prev_pos)
+			// move file pointer and set flag
+			set_sended(not_sended_pos);
+			not_sended_pos += sizeof(struct file_entry);
+			if (not_sended_pos < curr_pos)
 			{
-				// move file pointer and set flag
-				set_sended(not_sended_pos);
-				not_sended_pos += sizeof(struct file_entry);
+				// have not sended data
 				return HAS_NOT_SENDED;
 			}
-			if (not_sended_pos == prev_pos)
+			else
 			{
-				set_sended(prev_pos);
-				not_sended_pos = curr_pos;
+				// nothing new to send
 				return SUCCESS;
 			}
 			break;
