@@ -57,7 +57,8 @@ enum SEND_RES
 {
 	SUCCESS = 0,
 	FAILED,
-	HAS_NOT_SENDED
+	HAS_NOT_SENDED,
+	WAITING
 };
 
 SdFat SD;
@@ -196,9 +197,6 @@ void loop()
 		#ifdef DEBUG
 		Serial.println(F("Get ACK payload"));
 		#endif
-		cli();
-		has_ack_payload = 0;
-		sei();
 	}
 
 	if (radio_state == RX_MSG)
@@ -237,18 +235,22 @@ void loop()
 			currState = SEND_DATA;
 			break;
 		case SUCCESS:
+			cli();
+			radio_state = LISTEN;
+			sei();
+			radio.startListening();
 			currState = PREPARE_SLEEP;
 			break;
 		case FAILED:
+			cli();
+			radio_state = LISTEN;
+			sei();
+			radio.startListening();
 			currState = PREPARE_SLEEP;
 			break;
 		default:
 			break;
 		}
-		cli();
-		radio_state = LISTEN;
-		sei();
-		radio.startListening();
 		break;
 	case SEND_DATA:
 		send_data();
@@ -262,9 +264,18 @@ void loop()
 		}
 		break;
 	case PARSE_RX_DATA:
-		cli();
-		radio_state = LISTEN;
-		sei();
+		if (has_ack_payload)
+		{
+			cli();
+			has_ack_payload = 0;
+			sei();
+		}
+		else
+		{
+			cli();
+			radio_state = LISTEN;
+			sei();
+		}
 		#ifdef DEBUG
 		Serial.println(F("Get message !"));
 		#endif
@@ -371,7 +382,7 @@ uint8_t wait_for_send()
 			#endif
 			return FAILED;
 		default:
-			break;
+			return WAITING;
 	}
 }
 

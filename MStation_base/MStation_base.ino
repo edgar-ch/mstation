@@ -123,8 +123,8 @@ void loop()
 			if (modules[i].is_present)
 			{
 				#ifdef DEBUG
-				Serial.print(F("Send settings to pipe "));
-				Serial.println(i);
+				Serial.print(F("Write settings for pipe "));
+				Serial.println(i + 1);
 				#endif
 				radio.openWritingPipe(modules[i].address);
 				radio.stopListening();
@@ -133,9 +133,13 @@ void loop()
 					#ifdef DEBUG
 					Serial.println(F("Send failed, write to ACK"));
 					#endif
+					radio.startListening();
 					radio.writeAckPayload(i + 1, t_buffer, 32);
 				}
-				radio.startListening();
+				else
+				{
+					radio.startListening();
+				}
 			}
 		}
 		send_settings_flag = 0;
@@ -152,8 +156,8 @@ void parse_message(uint8_t num)
 			break;
 		case 'A':
 			// request settings
-			Serial.print("Get address from module: ");
-			Serial.write(r_buffer + 1, 6);
+			Serial.print("Get ADDR from module: ");
+			Serial.write(r_buffer + 1, 5);
 			Serial.println();
 			break;
 		case 'M':
