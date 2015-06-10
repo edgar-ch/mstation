@@ -3,7 +3,9 @@
 #include <RF24.h>
 #include <RF24_config.h>
 #include <Time.h>
+#include <TimeAlarms.h>
 #include <MStation.h>
+#include <LiquidCrystal.h>
 
 #define PIPES_TOTAL 5
 
@@ -29,11 +31,17 @@ struct measure_data data;
 struct meas_module modules[5];
 struct module_settings mod_conf;
 uint8_t send_settings_flag = 0;
+uint8_t has_data = 0, what_show = 0;
 
 uint8_t pipeNum;
 
+LiquidCrystal lcd(12, 11, 10, 5, 4, 3, 2);
+
 void setup()
 {
+	lcd.begin(16, 2);
+	lcd.home();
+	lcd.print("Init...");
 	// by default has only one module with preset addr
 	modules[0].is_present = 1;
 	memcpy(
@@ -63,6 +71,7 @@ void setup()
 	setSyncProvider(request_time);
 	request_time();
 	//setSyncInterval(600);
+	Alarm.timerRepeat(15, show_data_lcd);
 }
 
 void loop()
@@ -169,6 +178,7 @@ void parse_message(uint8_t num)
 			);
 			modules[num].has_data = 1;
 			print_measured_serial(&(modules[num].m_data));
+			has_data = 1;
 			break;
 		default:
 			// do something
@@ -250,7 +260,6 @@ void proc_cmd()
 			Serial.print(F("Get sleep cmd "));
 			Serial.println(mod_conf.is_sleep_enable);
 			#endif
-			send_settings_flag = 1;
 			break;
 		case 'T':
 			mod_conf.meas_period = Serial.parseInt();
@@ -258,6 +267,8 @@ void proc_cmd()
 			Serial.print(F("Get meas_period "));
 			Serial.println(mod_conf.meas_period);
 			#endif
+			break;
+		case 'N':
 			send_settings_flag = 1;
 			break;
 		case -1:
@@ -266,4 +277,55 @@ void proc_cmd()
 			#endif
 			break;
 	}
+}
+
+void show_data_lcd()
+{
+	char temp_s[16];
+
+	lcd.clear();
+	lcd.home();
+	if (has_data)
+	{
+		switch (what_show % 4) {
+		case 0:
+			lcd.print("Pressure:");
+			lcd.setCursor(1, 0);
+			lcd.print(modules[0].m_data.pressure);
+			break;
+		case 1:
+			lcd.print("Temperature:");
+			lcd.setCursor(1, 0);
+			dtostrf(
+				modules[0].m_data.temperature3,
+				5,
+				2,
+				temp_s
+			);
+			lcd.print(temp_s);
+			break;
+		case 2:
+			lcd.print("Humidity:");
+			lcd.setCursor(1, 0);
+			lcd.print(modules[0].m_data.humidity);
+			break;
+		case 3:
+			lcd.print("Lux:");
+			lcd.setCursor(1, 0);
+			dtostrf(
+				modules[0].m_data.lux,
+				5,
+				2,
+				temp_s
+			);
+			lcd.print(temp_s);
+			break;
+		}
+	}
+	else
+	{
+		lcd.print("No Data");
+	}
+
+	what_show++;
 }
