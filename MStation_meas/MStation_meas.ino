@@ -302,10 +302,25 @@ void loop()
 
 void start_measure()
 {
-	uint8_t oss = 0;
+	uint8_t oss = conf.sensors_prec % 4;
 
 	measured.pressure = bmp180_get_pressure(oss);
 	measured.temperature = bmp180_get_temp() * 0.1;
+	switch (conf.sensors_prec) {
+	case 0:
+		measured.lux = bh1750_meas_Lmode();
+		break;
+	case 1:
+		measured.lux = bh1750_meas_Hmode();
+		break;
+	case 2:
+	case 3:
+		measured.lux = bh1750_meas_H2mode();
+		break;
+	default:
+		measured.lux = bh1750_meas_H2mode();
+		break;
+	}
 	measured.lux = bh1750_meas_H2mode();
 	getTempDS18B20();
 	measured.temperature2 = ds18_temp;
@@ -406,6 +421,7 @@ void make_sleep()
 {
 	#ifdef DEBUG
 	Serial.println(F("Begin sleep"));
+	delay(3);
 	#endif
 	radio.powerDown();
 	set_sleep_mode(SLEEP_MODE_PWR_DOWN);

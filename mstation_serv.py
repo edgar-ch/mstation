@@ -243,7 +243,7 @@ def upload_to_ftp(host, name, passw, f_name):
     name_new = f_name + '.new'
     try:
         ftp_serv = ftplib.FTP(host, name, passw, '', 30)
-        ftp_serv.cwd('public_html')
+        ftp_serv.cwd(all_settings['FTP']['ftp_path'])
         ftp_serv.voidcmd('TYPE I')
         ftp_serv.voidcmd('PASV')
         write_lock.acquire()

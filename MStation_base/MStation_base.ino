@@ -32,10 +32,11 @@ struct meas_module modules[5];
 struct module_settings mod_conf;
 uint8_t send_settings_flag = 0;
 uint8_t has_data = 0, what_show = 0;
+unsigned long prevMillis = 15000;
 
 uint8_t pipeNum;
 
-LiquidCrystal lcd(12, 11, 10, 5, 4, 3, 2);
+LiquidCrystal lcd(2, 3, 4, 5, 9, 10);
 
 void setup()
 {
@@ -71,13 +72,14 @@ void setup()
 	setSyncProvider(request_time);
 	request_time();
 	//setSyncInterval(600);
-	Alarm.timerRepeat(15, show_data_lcd);
+	//Alarm.timerRepeat(15, show_data_lcd);
 }
 
 void loop()
 {
 	char in_byte;
 	uint8_t i;
+	unsigned long currMillis = millis();
 
 	if (Serial.available() > 0)
 	{
@@ -85,6 +87,7 @@ void loop()
 		switch (in_byte) {
 			case 'T':
 				proc_time_msg();
+				//Alarm.timerRepeat(15, show_data_lcd);
 				#ifdef DEBUG
 				Serial.println(F("Get time from serial"));
 				print_datetime_serial(conv_time(now()));
@@ -152,6 +155,12 @@ void loop()
 			}
 		}
 		send_settings_flag = 0;
+	}
+
+	if (currMillis - prevMillis > 15000)
+	{
+		prevMillis = currMillis;
+		show_data_lcd();
 	}
 }
 
@@ -290,12 +299,13 @@ void show_data_lcd()
 		switch (what_show % 4) {
 		case 0:
 			lcd.print("Pressure:");
-			lcd.setCursor(1, 0);
+			lcd.setCursor(0, 1);
 			lcd.print(modules[0].m_data.pressure);
+			lcd.print(" Pa");
 			break;
 		case 1:
 			lcd.print("Temperature:");
-			lcd.setCursor(1, 0);
+			lcd.setCursor(0, 1);
 			dtostrf(
 				modules[0].m_data.temperature3,
 				5,
@@ -303,15 +313,17 @@ void show_data_lcd()
 				temp_s
 			);
 			lcd.print(temp_s);
+			lcd.print(" \x99""C");
 			break;
 		case 2:
 			lcd.print("Humidity:");
-			lcd.setCursor(1, 0);
+			lcd.setCursor(0, 1);
 			lcd.print(modules[0].m_data.humidity);
+			lcd.print(" \x25");
 			break;
 		case 3:
 			lcd.print("Lux:");
-			lcd.setCursor(1, 0);
+			lcd.setCursor(0, 1);
 			dtostrf(
 				modules[0].m_data.lux,
 				5,
@@ -319,6 +331,7 @@ void show_data_lcd()
 				temp_s
 			);
 			lcd.print(temp_s);
+			lcd.print(" lx");
 			break;
 		}
 	}
