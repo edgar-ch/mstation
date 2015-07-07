@@ -13,7 +13,7 @@ if (empty($date1) || empty($date2)) {
 	die('Empty fields.');
 }
 
-$query = "SELECT DATE_FORMAT(Date, '%Y/%m/%d %H:%i') AS DATE,Temp1,Temp2,Humid FROM meteo WHERE Date BETWEEN '$date1' AND '$date2' ORDER BY DATE ASC";
+$query = "SELECT DATE_FORMAT(CONVERT_TZ(Date, '+00:00', '+03:00'), '%Y/%m/%d %H:%i') AS DATE,Press,Temp1,Temp2,Temp3,Humid,Lux FROM meteo WHERE Date BETWEEN '$date1' AND '$date2' ORDER BY DATE ASC";
 $result = mysql_query($query);
 
 if (!$result) {

@@ -18,7 +18,7 @@ if (!empty($date) && !empty($temp1) && !empty($temp2) && !empty($humid))
 {
 	$query = "INSERT INTO
 	meteo_test (`Date`, `Press`, `Temp1`, `Temp2`, `Temp3`, `Humid`, `Lux`)
-	VALUES('$date','$press','$temp1','$temp2','$temp2','$humid','$lux')";
+	VALUES('$date','$press','$temp1','$temp2','$temp3','$humid','$lux')";
 
 	if (!mysql_query($query, $con)) {
 		die('Error: ' . mysql_error());

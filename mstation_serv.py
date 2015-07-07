@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import serial
-from serial import SerialException
 import datetime
 import re
 import ftplib
@@ -66,11 +65,11 @@ all_settings = {
 
 data_head = ['date', 'press', 'temp1', 'temp2', 'temp3', 'humid', 'lux']
 
+log = logging.getLogger('main_log')
+log.setLevel(logging.INFO)
+
 
 def init_logger(log_path='mstation.log'):
-    global log
-    log = logging.getLogger('main_log')
-    log.setLevel(logging.INFO)
     log_handler = WatchedFileHandler(log_path)
     log_fmt = logging.Formatter(fmt=LOG_FORMAT)
     log_handler.setFormatter(log_fmt)
@@ -99,7 +98,7 @@ def main():
     while True:
         try:
             curr = ser.readline()
-        except SerialException as e:
+        except serial.SerialException as e:
             log.error('Serial error: ' + str(e))
             time.sleep(120)
             ser = serial_connect(SERIAL_DEV, SERIAL_SPEED, CONNECT_TRYS)
@@ -115,7 +114,7 @@ def main():
         if time_match:
             try:
                 ser.write(datetime.datetime.now().strftime('T%s'))
-            except SerialTimeoutException as e:
+            except serial.SerialTimeoutException as e:
                 log.error('Fail to send time to serial' + str(e))
             else:
                 log.info('Send time to serial success')
@@ -151,7 +150,7 @@ def process_meas_data(meas_string):
             args=(
                 all_settings['FTP']['ftp_serv'],
                 all_settings['FTP']['ftp_name'],
-                all_settings['FTP']['ftp_name'],
+                all_settings['FTP']['ftp_passw'],
                 f_name
             )
         )
@@ -176,7 +175,7 @@ def serial_connect(dev, speed, tryouts=5):
     while try_count <= tryouts:
         try:
             ser = serial.Serial(dev, speed)
-        except SerialException as e:
+        except serial.SerialException as e:
             log.error('Serial Connect Error: ' + str(e))
             print 'Connection Error'
             time.sleep(120)
@@ -191,7 +190,7 @@ def serial_connect(dev, speed, tryouts=5):
     sys.exit(-1)
 
 
-def parse_conf(filename='mstation_serv.cfg'):
+def parse_conf():
     if not config.has_section('MAIN'):
         log.error('Not have MAIN section in config')
         safe_quit()
@@ -304,7 +303,7 @@ def upload_to_url(url, data_req):
         log.error(str(e))
         return False
     else:
-        if (req.status_code == requests.codes.ok):
+        if (req.status_code == requests.codes['ok']):
             log.info('Upload success.')
             return True
         else:
@@ -333,7 +332,7 @@ def upload_to_openweathermap(data_str):
     except (ConnectionError, HTTPError, URLRequired, Timeout) as e:
         log.error(str(e))
     else:
-        if (req.status_code == requests.codes.ok):
+        if (req.status_code == requests.codes['ok']):
             log.info('Upload to OpenWeather success.')
         else:
             log.error(
