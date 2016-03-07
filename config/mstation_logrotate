@@ -1,0 +1,8 @@
+/var/log/mstation.log {
+	daily
+	missingok
+	rotate 7
+	compress
+	notifempty
+	create 644 root root
+}
