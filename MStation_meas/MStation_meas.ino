@@ -6,7 +6,6 @@
 #ifdef DEBUG
 #include <printf.h>
 #endif
-#include <Time.h> /* Not really uses, workaround for Stino */
 #include <MStation.h>
 #include <SdFat.h>
 #include <stddef.h>
@@ -110,6 +109,27 @@ dht DHT22;
 #ifdef DEBUG
 volatile uint8_t test_rx = 0;
 #endif
+
+// Function declarations
+void read_conf_from_EEPROM(struct module_settings *);
+void write_conf_to_EEPROM(struct module_settings *);
+void start_measure();
+void write_to_sd();
+void send_latest_data();
+uint8_t wait_for_send();
+void send_data();
+void prepare_sleep();
+void make_sleep();
+void radio_event();
+void alarm_int();
+uint8_t try_request_datetime();
+void parse_rx_data();
+void set_sended(uint32_t);
+struct file_entry read_entry(uint32_t);
+boolean getAddrDS18B20();
+boolean getTempDS18B20();
+void send_addr_to_base();
+void set_alarm();
 
 void setup()
 {
