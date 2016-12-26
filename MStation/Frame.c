@@ -19,7 +19,7 @@ uint8_t frame_generate(void *data, struct frame *fr, uint8_t data_len,
 	crc = frame_crc_calc(crc, fr->header);
 	for (i = 0; i < data_len; i++)
 	{
-		crc = frame_crc_calc(crc, data[i]);
+		crc = frame_crc_calc(crc, ((uint8_t *) data)[i]);
 	}
 
 	fr->checksum = crc;
@@ -37,7 +37,7 @@ uint8_t frame_decode(struct frame *fr, void *data, uint8_t *data_len,
 
 	data_crc = frame_crc_calc(data_crc, fr->header);
 	for (i = 0; i < *data_len; i++) {
-		data_crc = frame_crc_calc(data_crc, fr->data[i]);
+		data_crc = frame_crc_calc(data_crc, fr->payload[i]);
 	}
 
 	if (data_crc == fr->checksum) {
@@ -49,7 +49,7 @@ uint8_t frame_decode(struct frame *fr, void *data, uint8_t *data_len,
 	return FRAME_OK;
 }
 
-static frame_crc_calc(uint8_t crc, uint8_t data)
+uint8_t frame_crc_calc(uint8_t crc, uint8_t data)
 {
 	return _crc8_ccitt_update(crc, data);
 }

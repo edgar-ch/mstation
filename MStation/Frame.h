@@ -1,4 +1,5 @@
 #include <util/crc16.h>
+#include <string.h>
 
 #define FRAME_PAYLOAD_LEN 30
 #define FRAME_TYPE_OFFS 5
@@ -30,6 +31,6 @@ struct frame {
 #define FRAME_TYPE(A) (((A)->header & FRAME_TYPE_MASK) >> FRAME_TYPE_OFFS)
 #define FRAME_LEN(A) ((A)->header & FRAME_LEN_MASK)
 
-uint8_t frame_generate(void *, struct frame *, uint8_t, uint8_t, uint8_t);
+uint8_t frame_generate(void *, struct frame *, uint8_t, uint8_t);
 uint8_t frame_decode(struct frame *, void *, uint8_t *, uint8_t *);
-static frame_crc_calc(uint8_t, uint8_t);
+uint8_t frame_crc_calc(uint8_t, uint8_t);
