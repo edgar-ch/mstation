@@ -56,7 +56,7 @@ struct __attribute__((packed)) mdata_packet_buf {
 	struct mdata_packet mdata_rec[MDATA_PACKET_BUF_LEN];
 	uint8_t tail = 0;
 	uint8_t head = 0;
-}
+};
 
 struct __attribute__((packed)) temp_rec {
 	uint8_t type;
