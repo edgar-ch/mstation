@@ -25,10 +25,10 @@ enum FRAME_ERR
 	FRAME_OK = 0,
 	FRAME_ERR_LEN = 1, // data length too long
 	FRAME_ERR_TYPE = 2, // wrong frame type
-	FRAME_ERR_CRC = 3,
-	FRAME_BRK_STREAM = 4,
-	FRAME_ERR_NOMEM = 5,
-	FRAME_OK_END = 6,
+	FRAME_ERR_CRC = 3, // bad crc
+	FRAME_BRK_STREAM = 4, // missing "end" frame in stream
+	FRAME_ERR_NOMEM = 5, // given buffer too small
+	FRAME_OK_END = 6, // get all frames of "stream"
 	FRAME_BUF_EMPTY = 7
 };
 
@@ -52,6 +52,6 @@ struct __attribute__((packed)) frames_buffer
 
 int8_t frame_generate(void *, struct frame *, uint8_t, uint8_t);
 int8_t frame_decode(struct frame *, void *, uint8_t *, uint8_t *);
-int8_t frame_data_to_frames(void *, uint16_t, uint8_t *, uint16_t);
+int8_t frame_data_to_frames(void *, uint16_t, struct frames_buffer *, uint8_t);
 uint8_t frame_crc_calc(uint8_t, uint8_t);
 int8_t frame_get_stream(struct frames_buffer *, void *, uint16_t, uint8_t *);
