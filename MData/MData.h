@@ -78,10 +78,16 @@ struct __attribute__((packed)) datetime_rec {
 	struct datetime dt;
 };
 
+struct __attribute__((packed)) solar_rad_rec {
+	uint8_t type;
+	uint32_t solar_rad;
+};
+
 void mdata_init(struct mdata_packet *);
 int8_t mdata_add_temp(float *, uint8_t);
 int8_t mdata_add_humidity(uint8_t *, uint8_t);
 int8_t mdata_add_pressure(uint32_t *, uint8_t);
+int8_t mdata_add_solar_rad(uint32_t *, uint8_t);
 int8_t mdata_fin_packet(struct mdata_packet *);
 uint16_t mdata_packet_len(struct mdata_packet *);
 uint16_t mdata_crc_update(uint16_t, uint8_t);

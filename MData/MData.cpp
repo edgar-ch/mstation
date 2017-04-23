@@ -76,6 +76,27 @@ int8_t mdata_add_pressure(uint32_t *pressure, uint8_t pressure_type)
 	return 0;
 }
 
+int8_t mdata_add_solar_rad(uint32_t *solar_rad, uint8_t solar_rad_type)
+{
+	struct solar_rad_rec solar_rad_data;
+
+	if ((solar_rad_type & 0xF0) != MDATA_SOLAR_RADIATION) {
+		return -1;
+	}
+	if ((mdata_data_ptr + sizeof(struct solar_rad_rec)) - mdata_start_ptr \
+		 > MDATA_MAX_DATA_LENGTH) {
+		return -2;
+	}
+
+	solar_rad_data.type = solar_rad_type;
+	solar_rad_data.solar_rad = *solar_rad;
+
+	memcpy(mdata_data_ptr, &solar_rad_data, sizeof(struct solar_rad_rec));
+	mdata_data_ptr += sizeof(struct solar_rad_rec);
+
+	return 0;
+}
+
 int8_t mdata_add_datetime(struct datetime *dt, uint8_t datetime_type)
 {
 	struct datetime_rec dt_rec;
