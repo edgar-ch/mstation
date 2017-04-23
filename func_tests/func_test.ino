@@ -25,6 +25,7 @@ float test_temp2 = 12.90;
 float test_temp3 = -23.56;
 float test_temp4 = 21.45;
 uint32_t test_pressure = 99458;
+uint32_t test_solar_rad = 45678;
 uint8_t test_humidity = 78;
 
 int tests_run = 0;
@@ -54,6 +55,7 @@ void loop()
 	meas_time = conv_time(1482836626UL);
 
 	/* Test packet generation */
+	/* Short packet */
 	mdata_init(&test_packet);
 	res = mdata_add_datetime(&meas_time, MDATA_DATETIME);
 	check_test(res, "MDATA_ADD_DATETIME", "");
@@ -61,6 +63,7 @@ void loop()
 	check_test(res, "MDATA_ADD_TEMP", "");
 	res = mdata_add_temp(&test_temp2, MDATA_TEMP2);
 	check_test(res, "MDATA_ADD_TEMP2", "");
+	/* Medium packet (2 frames) */
 	res = mdata_add_temp(&test_temp3, MDATA_TEMP3);
 	check_test(res, "MDATA_ADD_TEMP3", "");
 	res = mdata_add_temp(&test_temp4, MDATA_TEMP4);
@@ -69,6 +72,9 @@ void loop()
 	check_test(res, "MDATA_ADD_HUMID", "");
 	res = mdata_add_pressure(&test_pressure, MDATA_PRESSURE);
 	check_test(res, "MDATA_ADD_PRESS", "");
+	/* Big packet */
+	res = mdata_add_solar_rad(&test_solar_rad, MDATA_SOLAR_RADIATION);
+	check_test(res, "MDATA_ADD_SOLAR_RAD", "");
 	mdata_fin_packet(&test_packet);
 	check_test(test_packet.header.length, "PACKET_DATA_LENGHT", "");
 	check_test(mdata_packet_len(&test_packet), "PACKET_LENGHT", "");
