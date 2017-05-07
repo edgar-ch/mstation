@@ -27,6 +27,7 @@ float test_temp4 = 21.45;
 uint32_t test_pressure = 99458;
 uint32_t test_solar_rad = 45678;
 uint8_t test_humidity = 78;
+float test_lux = 9876.5;
 
 int tests_run = 0;
 int tests_failed = 0;
@@ -75,6 +76,8 @@ void loop()
 	/* Big packet */
 	res = mdata_add_solar_rad(&test_solar_rad, MDATA_SOLAR_RADIATION);
 	check_test(res, "MDATA_ADD_SOLAR_RAD", "");
+	res = mdata_add_lux(&test_lux, MDATA_LUX);
+	check_test(res, "MDATA_ADD_LUX", "");
 	mdata_fin_packet(&test_packet);
 	check_test(test_packet.header.length, "PACKET_DATA_LENGHT", "");
 	check_test(mdata_packet_len(&test_packet), "PACKET_LENGHT", "");
