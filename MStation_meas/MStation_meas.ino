@@ -7,6 +7,8 @@
 #include <printf.h>
 #endif
 #include <MStation.h>
+#include <Frame.h>
+#include <MData.h>
 #include <SdFat.h>
 #include <stddef.h>
 #include <avr/sleep.h>
@@ -43,9 +45,11 @@ enum STATES
 	INIT = 0, // initial state
 	MEAS_TIME,
 	RECORD_DATA,
+	PREPARE_DATA,
 	SEND_LATEST_DATA,
-	SEND_DATA,
+	SEND_OLD_DATA,
 	PARSE_RX_DATA,
+	SEND_FRAME,
 	WAIT_FOR_SEND,
 	WAIT_FOR_TIMEOUT,
 	PREPARE_SLEEP,
@@ -76,7 +80,11 @@ uint8_t t_buffer[32];
 // current datetime
 struct datetime curr_datetime;
 // latest measured data
-struct measure_data measured;
+struct mdata_packet measured;
+// frame buffer for data sending
+struct frames_buffer frame_buf;
+// frames for sending count
+int frame_cnt;
 // timeout of time request (in millis)
 unsigned int time_req_timeout = 30000;
 // file for measured data
@@ -130,6 +138,8 @@ boolean getAddrDS18B20();
 boolean getTempDS18B20();
 void send_addr_to_base();
 void set_alarm();
+void send_frame();
+void prepare_data();
 
 void setup()
 {
@@ -244,32 +254,42 @@ void loop()
 		write_to_sd();
 		currState = SEND_LATEST_DATA;
 		break;
+	case PREPARE_DATA:
+		// prepare measured data for sending
+		prepare_data();
+		currState = SEND_LATEST_DATA;
+		break;
 	case SEND_LATEST_DATA:
 		send_latest_data();
+		currState = WAIT_FOR_SEND;
+		break;
+	case SEND_FRAME:
+		send_frame();
 		currState = WAIT_FOR_SEND;
 		break;
 	case WAIT_FOR_SEND:
 		res = wait_for_send();
 		switch (res) {
-		case HAS_NOT_SENDED:
-			currState = SEND_DATA;
-			break;
+		//case HAS_NOT_SENDED:
+		//	currState = SEND_OLD_DATA;
+		//	break;
 		case SUCCESS:
+			frame_buf.tail++;
+			currState = SEND_LATEST_DATA;
+			break;
 		case FAILED:
-			cli();
-			radio_state = LISTEN;
-			sei();
-			radio.startListening();
 			currState = PREPARE_SLEEP;
 			break;
 		default:
 			break;
 		}
 		break;
-	case SEND_DATA:
+	/*
+	case SEND_OLD_DATA:
 		send_data();
 		currState = WAIT_FOR_SEND;
 		break;
+	*/
 	case WAIT_FOR_TIMEOUT:
 		if (get_timeout)
 		{
@@ -323,32 +343,49 @@ void loop()
 void start_measure()
 {
 	uint8_t oss = conf.sensors_prec % 4;
+	float tmp_temp;
+	float tmp_lux;
+	uint8_t tmp_humid;
+	uint32_t tmp_press;
 
-	measured.pressure = bmp180_get_pressure(oss);
-	measured.temperature = bmp180_get_temp() * 0.1;
+	mdata_init(&measured);
+	/* Save current datetime */
+	curr_datetime = ds3231_get_datetime();
+	mdata_add_datetime(&curr_datetime, MDATA_DATETIME);
+	/* Measure pressure and temperature from BMP180 */
+	tmp_press = bmp180_get_pressure(oss);
+	tmp_temp = bmp180_get_temp() * 0.1;
+	mdata_add_pressure(&tmp_press, MDATA_PRESSURE);
+	mdata_add_temp(&tmp_temp, MDATA_TEMP);
+	/* Lux from BH1750 */
 	switch (conf.sensors_prec) {
 	case 0:
-		measured.lux = bh1750_meas_Lmode();
+		tmp_lux = bh1750_meas_Lmode();
 		break;
 	case 1:
-		measured.lux = bh1750_meas_Hmode();
+		tmp_lux = bh1750_meas_Hmode();
 		break;
 	case 2:
 	case 3:
-		measured.lux = bh1750_meas_H2mode();
+		tmp_lux = bh1750_meas_H2mode();
 		break;
 	default:
-		measured.lux = bh1750_meas_H2mode();
+		tmp_lux = bh1750_meas_H2mode();
 		break;
 	}
-	measured.lux = bh1750_meas_H2mode();
+	mdata_add_lux(&tmp_lux, MDATA_LUX);
+	/* Measure temp from DS18B20 */
 	getTempDS18B20();
-	measured.temperature2 = ds18_temp;
+	tmp_temp = ds18_temp;
+	mdata_add_temp(&tmp_temp, MDATA_TEMP2);
+	/* Measure temp and humidity from DHT22 */
 	DHT22.read22(DHT22_PIN);
-	measured.temperature3 = DHT22.temperature;
-	measured.humidity = DHT22.humidity;
-	curr_datetime = ds3231_get_datetime();
-	measured.mtime = curr_datetime;
+	tmp_temp = DHT22.temperature;
+	tmp_humid = DHT22.humidity;
+	mdata_add_temp(&tmp_temp, MDATA_TEMP3);
+	mdata_add_humidity(&tmp_humid, MDATA_HUMIDITY);
+	/* Finalize */
+	mdata_fin_packet(&measured);
 	#ifdef DEBUG
 	print_measured_serial(&measured);
 	#endif
@@ -356,30 +393,62 @@ void start_measure()
 
 void write_to_sd()
 {
-	struct file_entry data_entry;
+	struct file_entry_head data_entry;
 
 	#ifdef DEBUG
 	Serial.println(F("Write measured to SD"));
 	#endif
 	//prev_pos = curr_pos;
-	data_entry.m_data = measured;
 	data_entry.is_sended = 0;
+	data_entry.data_len = mdata_packet_len(&measured);
 	meas_file.seekSet(curr_pos);
-	meas_file.write(&data_entry, sizeof(struct file_entry));
+	/* Write header */
+	meas_file.write(&data_entry, sizeof(struct file_entry_head));
+	/* Write measured data */
+	meas_file.write(&measured, data_entry.data_len);
 	meas_file.sync();
 	curr_pos = meas_file.curPosition();
 }
 
+void prepare_data()
+{
+	// split measured data to frames
+	frame_cnt = frame_data_to_frames(
+		&measured,
+		mdata_packet_len(&measured),
+		&frame_buf,
+		FRAMES_BUF_LEN
+	);
+	#ifdef DEBUG
+	if (frame_cnt < 0) {
+		Serial.print(F("Generate frames if failed: "));
+		Serial.println(frame_cnt);
+	}
+	#endif
+}
+
 void send_latest_data()
 {
-	// prepare measurement data
-	t_buffer[0] = 'M';
-	memcpy(t_buffer + 1, &measured, sizeof(struct measure_data));
-	// and send it to radio
+	// send frames to base station
+	if (frame_buf.tail != frame_buf.head) {
+		currState = SEND_FRAME;
+	} else {
+		currState = PREPARE_SLEEP;
+		/* FIXME: add checking for not sended data is avaliable */
+	}
+}
+
+void send_frame()
+{
 	radio.stopListening();
-	radio.startWrite(t_buffer, sizeof(t_buffer), 0);
+	radio.startWrite(
+		&frame_buf.frame_record[frame_buf.tail],
+		sizeof(struct frame),
+		0
+	);
 	#ifdef DEBUG
-	Serial.println(F("Send data to base station"));
+	Serial.print(F("Send frame: "));
+	Serial.println(frame_buf.tail);
 	#endif
 }
 
@@ -387,6 +456,7 @@ uint8_t wait_for_send()
 {
 	switch (radio_state) {
 		case TX_SUCCESS:
+			/*
 			#ifdef DEBUG
 			Serial.println(F("Sending data success."));
 			#endif
@@ -403,6 +473,11 @@ uint8_t wait_for_send()
 				// nothing new to send
 				return SUCCESS;
 			}
+			*/
+			#ifdef DEBUG
+			Serial.println(F("Sending data success."));
+			#endif
+			return SUCCESS;
 			break;
 		case TX_FAIL:
 			#ifdef DEBUG
@@ -413,7 +488,7 @@ uint8_t wait_for_send()
 			return WAITING;
 	}
 }
-
+/*
 void send_data()
 {
 	struct file_entry data_entry;
@@ -429,7 +504,7 @@ void send_data()
 	// and send it to radio
 	radio.startWrite(t_buffer, sizeof(t_buffer), 0);
 }
-
+*/
 void prepare_sleep()
 {
 	set_alarm();
@@ -479,6 +554,10 @@ void radio_event()
 	{
 		radio_state = TX_SUCCESS;
 		has_ack_payload = 1;
+	}
+	if (tx || fail) {
+		radio.startListening();
+		radio_state = LISTEN;
 	}
 }
 
@@ -567,7 +646,7 @@ void parse_rx_data()
 		}
 	}
 }
-
+/*
 void set_sended(uint32_t pos)
 {
 	meas_file.seekSet(pos + offsetof(file_entry, is_sended));
@@ -584,7 +663,7 @@ struct file_entry read_entry(uint32_t pos)
 
 	return tmp;
 }
-
+*/
 boolean getAddrDS18B20()
 {
 	byte i;

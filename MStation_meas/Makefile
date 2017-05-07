@@ -28,12 +28,16 @@ MONITOR_BAUDRATE  = 115200
 ### Flags you might want to set for debugging purpose. Comment to stop.
 CXXFLAGS         += -Wall
 
+### CPPFLAGS
+### Flags passed to the C pre-processor
+CPPFLAGS	 += -DFRAMES_BUF_LEN=4
+
 ### OBJDIR
 ### This is where you put the binaries you just compile using 'make'
 OBJDIR            = $(PROJECT_DIR)/bin/$(BOARD_TAG)/$(CURRENT_DIR)
 
 USER_LIB_PATH     = $(HOME)/Arduino/libraries
-ARDUINO_LIBS      = DHTlib Wire MStation RF24 OneWire SPI SdFat EEPROM
+ARDUINO_LIBS      = DHTlib Wire MStation RF24 OneWire SPI SdFat EEPROM Frame MData
 
 ### Do not touch - the path to Arduino.mk, inside the ARDMK_DIR
 include $(ARDMK_DIR)/Arduino.mk
