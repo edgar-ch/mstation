@@ -1,3 +1,4 @@
+#pragma once
 #define BASE_YEAR 2000
 
 /* Shared structures for base and measurement modules 
@@ -25,9 +26,10 @@ struct __attribute__((packed)) measure_data
 	float lux;
 };
 
-struct __attribute__((packed)) file_entry
+struct __attribute__((packed)) file_entry_head
 {
-	struct measure_data m_data;
+	char head = 'M';
+	uint16_t data_len;
 	uint8_t is_sended;
 };
 
