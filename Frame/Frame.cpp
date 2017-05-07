@@ -84,8 +84,9 @@ int8_t frame_data_to_frames(void *data, uint16_t data_len,
 		}
 		frame_generate(data_ptr, &f_buf->frame_record[i], data_len, FRAME_END);
 	}
-	/* save tail of buffer */
-	f_buf->tail = frame_amount;
+	/* save head of buffer and set tail to begining of buffer */
+	f_buf->tail = 0;
+	f_buf->head = frame_amount - 1;
 
 	return frame_amount;
 }

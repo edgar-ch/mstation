@@ -9,6 +9,7 @@
 #define FRAME_LEN_MASK 0x1F
 
 #ifndef FRAMES_BUF_LEN
+#warning "Frames buffer size is set to default"
 #define FRAMES_BUF_LEN 6
 #endif
 
@@ -49,6 +50,8 @@ struct __attribute__((packed)) frames_buffer
 #define FRAME_TYPE(A) (((A)->header & FRAME_TYPE_MASK) >> FRAME_TYPE_OFFS)
 #define FRAME_LEN(A) ((A)->header & FRAME_LEN_MASK)
 #define FRAME_BUF_PTR_INC(A) (A = (A + 1) % FRAMES_BUF_LEN)
+#define FRAMES_BUF_AVAL(A) ((((A)->head - (A)->tail + 1) + FRAMES_BUF_LEN) % FRAMES_BUF_LEN)
+#define FRAMES_BUF_USE(A) (FRAMES_BUF_LEN - FRAMES_BUF_AVAL((A)))
 
 int8_t frame_generate(void *, struct frame *, uint8_t, uint8_t);
 int8_t frame_decode(struct frame *, void *, uint8_t *, uint8_t *);
