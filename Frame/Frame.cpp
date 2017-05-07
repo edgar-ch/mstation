@@ -93,11 +93,11 @@ int8_t frame_data_to_frames(void *data, uint16_t data_len,
 
 int8_t frame_get_stream(struct frames_buffer *f_buf, void *dest_buf, uint16_t len, uint8_t *data_len)
 {
-	struct frame *frame_rec = &f_buf->frame_record[f_buf->head];
+	struct frame *frame_rec = &f_buf->frame_record[f_buf->tail];
 	uint8_t tmp_type;
 	int8_t ret, f_ret = FRAME_OK;
 
-	if (f_buf->head == f_buf->tail) {
+	if (f_buf->tail == f_buf->head) {
 		return FRAME_BUF_EMPTY; // Buffer is EMPTY
 	}
 
@@ -122,7 +122,7 @@ int8_t frame_get_stream(struct frames_buffer *f_buf, void *dest_buf, uint16_t le
 	if (ret) {
 		f_ret = ret;
 	}
-	FRAME_BUF_PTR_INC(f_buf->head);
+	FRAME_BUF_PTR_INC(f_buf->tail);
 
 	return f_ret;
 }
