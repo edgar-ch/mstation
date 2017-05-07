@@ -107,12 +107,12 @@ void loop()
 	// Copy measure module data to base station buffer and measure copy time
 	for (i = 0; i < frame_cnt; i++) {
 		st_time = micros();
-		memcpy(&t_fbuf.frame_record[t_fbuf.tail],
+		memcpy(&t_fbuf.frame_record[t_fbuf.head],
 			&meas_t_fbuf.frame_record[i], sizeof(struct frame));
-		FRAME_BUF_PTR_INC(t_fbuf.tail);
+		FRAME_BUF_PTR_INC(t_fbuf.head);
 		end_time = micros();
 		print_time(st_time, end_time, "FRAME_COPY");
-		check_test(t_fbuf.tail, "FBUF_TAIL", "");
+		check_test(t_fbuf.head, "FBUF_HEAD", "");
 	}
 
 	/* Check frame buffer for incoming packets */
@@ -130,7 +130,7 @@ void loop()
 		Serial.println(data_len);
 		t_packet_buf_ptr += data_len;
 		t_packet_data_free -= data_len;
-	} while (res != FRAME_BUF_EMPTY);
+	} while (res != FRAME_OK_END);
 
 	Serial.println();
 
