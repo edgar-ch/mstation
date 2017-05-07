@@ -26,20 +26,10 @@ enum MDATA_TYPE {
 	MDATA_SOLAR_RADIATION = 0x60,
 	MDATA_SOLAR_LEN = 0x70,
 	MDATA_PRECIPITATION = 0x80,
-	MDATA_DATETIME = 0x90
+	MDATA_DATETIME = 0x90,
+	MDATA_LUX = 0xA0
 };
-/*
-enum MDATA_FIELD_SIZE {
-	MDATA_TEMP_SIZE = 4,
-	MDATA_HUMIDITY_SIZE = 1,
-	MDATA_PRESSURE_SIZE = 4,
-	MDATA_WIND_DIR = 2,
-	MDATA_WIND_SPEED = 2,
-	MDATA_SOLAR_RADIATION = 4,
-	MDATA_SOLAR_LEN = 2,
-	MDATA_PRECIPITATION_DUR = 4
-}
-*/
+
 struct __attribute__((packed)) mdata_header {
 	uint8_t type;
 	uint8_t version;
@@ -83,11 +73,17 @@ struct __attribute__((packed)) solar_rad_rec {
 	uint32_t solar_rad;
 };
 
+struct __attribute__((packed)) lux_rec {
+	uint8_t type;
+	float lux;
+};
+
 void mdata_init(struct mdata_packet *);
 int8_t mdata_add_temp(float *, uint8_t);
 int8_t mdata_add_humidity(uint8_t *, uint8_t);
 int8_t mdata_add_pressure(uint32_t *, uint8_t);
 int8_t mdata_add_solar_rad(uint32_t *, uint8_t);
+int8_t mdata_add_lux(float *, uint8_t);
 int8_t mdata_fin_packet(struct mdata_packet *);
 uint16_t mdata_packet_len(struct mdata_packet *);
 uint16_t mdata_crc_update(uint16_t, uint8_t);

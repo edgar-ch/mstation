@@ -118,6 +118,27 @@ int8_t mdata_add_datetime(struct datetime *dt, uint8_t datetime_type)
 	return 0;
 }
 
+int8_t mdata_add_lux(float *lux, uint8_t lux_type)
+{
+	struct lux_rec lux_data;
+
+	if ((lux_type & 0xF0) != MDATA_LUX) {
+		return -1;
+	}
+	if ((mdata_data_ptr + sizeof(struct lux_rec)) - mdata_start_ptr \
+		 > MDATA_MAX_DATA_LENGTH) {
+		return -2;
+	}
+
+	lux_data.type = lux_type;
+	lux_data.lux = *lux;
+
+	memcpy(mdata_data_ptr, &lux_data, sizeof(struct lux_rec));
+	mdata_data_ptr += sizeof(struct lux_rec);
+
+	return 0;
+}
+
 int8_t mdata_fin_packet(struct mdata_packet *mdata)
 {
 	uint8_t data_size = mdata_data_ptr - mdata->data;
