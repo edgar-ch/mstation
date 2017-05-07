@@ -3,9 +3,9 @@
 #include <RF24.h>
 #include <RF24_config.h>
 #include <Time.h>
-#include <TimeAlarms.h>
+//#include <TimeAlarms.h>
 #include <MStation.h>
-#include <LiquidCrystal.h>
+//#include <LiquidCrystal.h>
 
 #define PIPES_TOTAL 5
 
@@ -36,13 +36,20 @@ unsigned long prevMillis = 15000;
 
 uint8_t pipeNum;
 
-LiquidCrystal lcd(2, 3, 4, 5, 9, 10);
+//LiquidCrystal lcd(2, 3, 4, 5, 9, 10);
+void send_time_to_module(uint8_t);
+void proc_time_msg();
+time_t request_time();
+void parse_message(uint8_t);
+void proc_cmd();
 
 void setup()
 {
+	/*
 	lcd.begin(16, 2);
 	lcd.home();
 	lcd.print("Init...");
+	*/
 	// by default has only one module with preset addr
 	modules[0].is_present = 1;
 	memcpy(
@@ -156,12 +163,13 @@ void loop()
 		}
 		send_settings_flag = 0;
 	}
-
+	/*
 	if (currMillis - prevMillis > 15000)
 	{
 		prevMillis = currMillis;
 		show_data_lcd();
 	}
+	*/
 }
 
 void parse_message(uint8_t num)
@@ -280,14 +288,14 @@ void proc_cmd()
 		case 'N':
 			send_settings_flag = 1;
 			break;
-		case -1:
+		default:
 			#ifdef DEBUG
 			Serial.println(F("Not CMD"));
 			#endif
 			break;
 	}
 }
-
+/*
 void show_data_lcd()
 {
 	char temp_s[16];
@@ -342,3 +350,4 @@ void show_data_lcd()
 
 	what_show++;
 }
+*/
