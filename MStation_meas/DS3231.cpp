@@ -30,7 +30,7 @@ uint8_t ds3231_read_reg(uint8_t reg)
 	return tmp;
 }
 
-uint8_t ds3231_write_reg(uint8_t addr, uint8_t reg)
+void ds3231_write_reg(uint8_t addr, uint8_t reg)
 {
 	Wire.beginTransmission(DS3231_ADDR);
 	Wire.write(addr);
