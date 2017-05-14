@@ -6,8 +6,11 @@
 //#include <TimeAlarms.h>
 #include <MStation.h>
 //#include <LiquidCrystal.h>
+#include <Frame.h>
+#include <MData.h>
 
 #define PIPES_TOTAL 5
+#define MEAS_MODULES_AMOUNT 2
 
 enum nRF24_ADD_PINS{CE_PIN = 7, CS_PIN = 8, INT_PIN = 2};
 // RADIO STATE
@@ -23,13 +26,16 @@ volatile uint8_t radio_state = NOTHING;
 uint8_t r_buffer[32];
 // buffer for transfer messages
 uint8_t t_buffer[32];
-
-struct measure_data data;
+// frames buffers for measure modules
+struct frames_buffer fr_buf[MEAS_MODULES_AMOUNT];
+// buffers for MData packets
+struct mdata_packet_buf p_buf;
 /* slots for connected modules
  * Note: individual settings are not supported
  * */
-struct meas_module modules[5];
+struct meas_module modules[MEAS_MODULES_AMOUNT];
 struct module_settings mod_conf;
+volatile uint8_t tx_ok = NO_TX;
 uint8_t send_settings_flag = 0;
 uint8_t has_data = 0, what_show = 0;
 unsigned long prevMillis = 15000;
@@ -37,14 +43,17 @@ unsigned long prevMillis = 15000;
 uint8_t pipeNum;
 
 //LiquidCrystal lcd(2, 3, 4, 5, 9, 10);
-void send_time_to_module(uint8_t);
+void send_time_to_module(uint8_t, uint8_t);
 void proc_time_msg();
 time_t request_time();
-void parse_message(uint8_t);
 void proc_cmd();
+void radio_event();
+void process_msg(struct mdata_buf_rec *, uint8_t);
+void parse_data(void *, uint8_t);
 
 void setup()
 {
+	uint8_t i;
 	/*
 	lcd.begin(16, 2);
 	lcd.home();
@@ -67,7 +76,7 @@ void setup()
 	radio.enableDynamicPayloads();
 	radio.enableAckPayload();
 	radio.openReadingPipe(0, base_radio_addr);
-	for (int i = 0; i < 5; i++)
+	for (i = 0; i < MEAS_MODULES_AMOUNT; i++)
 	{
 		if (modules[i].is_present)
 		{
@@ -75,19 +84,25 @@ void setup()
 		}
 	}
 	//radio.openWritingPipe(radio_addr[1]);
+	attachInterrupt(0, radio_event, LOW);
 	radio.startListening();
 	setSyncProvider(request_time);
 	request_time();
 	//setSyncInterval(600);
 	//Alarm.timerRepeat(15, show_data_lcd);
+	/* Init packet buffers */
+	for (i = 0; i < MDATA_PACKET_BUF_LEN; i++) {
+		p_buf.mdata_rec[i].mdata_ptr_curr = (uint8_t *) &p_buf.mdata_rec[i].mdata_pack;
+	}
 }
 
 void loop()
 {
+	int8_t ret;
 	char in_byte;
-	uint8_t i;
-	unsigned long currMillis = millis();
-
+	uint8_t i, data_len;
+	//unsigned long currMillis = millis();
+	// Get commands from serial port
 	if (Serial.available() > 0)
 	{
 		in_byte = Serial.read();
@@ -115,23 +130,47 @@ void loop()
 				break;
 		}
 	}
-	if (radio.available(&pipeNum))
-	{
-		radio.read(&r_buffer, sizeof(r_buffer));
-		if (pipeNum == 0)
-		{
-			if (r_buffer[0] == 'A')
-			{
-				Serial.print("Get ADDR from module: ");
-				Serial.write(t_buffer + 1, 5);
-				Serial.println();
+	// Check frame buffers for incoming data
+	for (i = 0; i < MEAS_MODULES_AMOUNT; i++) {
+		if (FRAMES_BUF_USE(fr_buf[i]) &&
+				p_buf.mdata_rec[i].has_data != HAS_DATA_FULL) {
+			ret = frame_get_stream(
+				&fr_buf[i],
+				p_buf.mdata_rec[i].mdata_ptr_curr,
+				p_buf.mdata_rec[i].mdata_free,
+				&data_len
+			);
+			if (ret == FRAME_OK) {
+				if (p_buf.mdata_rec[i].has_data == NO_DATA) {
+					p_buf.cnt++;
+					p_buf.mdata_rec[i].has_data = HAS_DATA;
+				}
+				p_buf.mdata_rec[i].mdata_ptr_curr += data_len;
+				p_buf.mdata_rec[i].mdata_free -= data_len;
+			} else if (ret == FRAME_OK_END || ret == FRAME_OK_SIMPLE) {
+				p_buf.mdata_rec[i].has_data = HAS_DATA_FULL;
+			} else if (ret == -FRAME_BRK_STREAM) {
+				p_buf.mdata_rec[i].has_data = NO_DATA;
+				p_buf.mdata_rec[i].mdata_ptr_curr = (uint8_t *) &p_buf.mdata_rec[i].mdata_pack;
+				p_buf.mdata_rec[i].mdata_free = sizeof(struct mdata_packet);
+			} else {
+				#ifdef DEBUG
+				Serial.print("ERR:STREAM:");
+				Serial.println(ret);
+				#endif
 			}
 		}
-		else
-		{
-			parse_message(pipeNum - 1);
+	}
+	// Check packets buffer
+	if (MDATA_BUF_USE(p_buf)) {
+		for (i = 0; i < MDATA_PACKET_BUF_LEN; i++) {
+			if (p_buf.mdata_rec[i].has_data == HAS_DATA_FULL) {
+				process_msg(&p_buf.mdata_rec[i], i);
+			}
 		}
 	}
+	// if need to send settings data to module
+	/*
 	if (send_settings_flag)
 	{
 		t_buffer[0] = 'S';
@@ -163,6 +202,7 @@ void loop()
 		}
 		send_settings_flag = 0;
 	}
+	*/
 	/*
 	if (currMillis - prevMillis > 15000)
 	{
@@ -172,34 +212,76 @@ void loop()
 	*/
 }
 
-void parse_message(uint8_t num)
+void radio_event()
 {
-	switch (r_buffer[0])
+	bool tx, fail, rx;
+	uint8_t pipeNum, rxBytes, buf_id;
+
+	radio.whatHappened(tx, fail, rx);
+
+	if (tx)
 	{
-		case 'T':
-	    	// time request, send time
-			send_time_to_module(num);
-			break;
-		case 'A':
-			// request settings
-			Serial.print("Get ADDR from module: ");
-			Serial.write(r_buffer + 1, 5);
-			Serial.println();
-			break;
-		case 'M':
-	    	// get measurement data, send to serial
-			memcpy(
-				&(modules[num].m_data),
-				r_buffer + 1,
-				sizeof(struct measure_data)
-			);
-			modules[num].has_data = 1;
-			print_measured_serial(&(modules[num].m_data));
-			has_data = 1;
-			break;
-		default:
-			// do something
-			break;
+		tx_ok = TX_OK;
+		//radio_state = TX_SUCCESS;
+	}
+	if (rx)
+	{
+		while (radio.available(&pipeNum)) {
+			buf_id = pipeNum - 1;
+			rxBytes = radio.getDynamicPayloadSize();
+			if (rxBytes == FRAME_FULL_LEN) {
+				if (FRAMES_BUF_AVAL(fr_buf[buf_id])) {
+					radio.read(
+						&fr_buf[buf_id].frame_record[fr_buf[buf_id].head],
+						FRAME_FULL_LEN
+					);
+					FRAME_BUF_PTR_INC(fr_buf[buf_id].head);
+					fr_buf[buf_id].cnt++;
+				}
+			}
+		}
+		//radio_state = RX_MSG;
+	}
+	if (fail)
+	{
+		tx_ok = TX_FAILED;
+		//radio_state = TX_FAIL;
+	}
+	if (tx || fail) {
+		radio.startListening();
+		//radio_state = LISTEN;
+	}
+}
+
+void process_msg(struct mdata_buf_rec *buf_rec, uint8_t id)
+{
+	uint8_t ret;
+
+	ret = mdata_check_packet(&buf_rec->mdata_pack);
+	if (ret == MDATA_WR_DATA) {
+		parse_data(&buf_rec->mdata_pack, id);
+	} else if (ret == MDATA_CRC_MISMATCH) {
+		Serial.println("ERR:BRK_PACK");
+	} else {
+		Serial.write(
+			(uint8_t *) &buf_rec->mdata_pack,
+			mdata_packet_len(&buf_rec->mdata_pack)
+		);
+	}
+}
+
+void parse_data(void *ptr, uint8_t id)
+{
+	char *hdr = (char *) ptr;
+
+	if (*hdr == 'T') {
+		send_time_to_module(id, 0);
+	} else if (*hdr == 'A') {
+		Serial.print("ADDR:");
+		Serial.print(id);
+		Serial.print(':');
+		Serial.write((uint8_t *) hdr + 1, 5);
+		Serial.println();
 	}
 }
 
@@ -218,7 +300,7 @@ struct datetime conv_time(time_t curr)
 	return curr_datetime;
 }
 
-void send_time_to_module(uint8_t num)
+void send_time_to_module(uint8_t num, uint8_t ack_payl)
 {	
 	struct datetime curr;
 
@@ -230,13 +312,13 @@ void send_time_to_module(uint8_t num)
 	#endif
 	t_buffer[0] = 'T';
 	memcpy(t_buffer + 1, &curr, sizeof(struct datetime));
-	radio.openWritingPipe(modules[num].address);
-	radio.stopListening();
-	if (!radio.write(t_buffer, 32))
-	{
-		radio.writeAckPayload(num, t_buffer, 32);
+	if (ack_payl) {
+		radio.writeAckPayload(num + 1, t_buffer, 32);
+	} else {
+		radio.openWritingPipe(modules[num].address);
+		radio.stopListening();
+		radio.startWrite(t_buffer, 32, 0);
 	}
-	radio.startListening();
 }
 
 time_t request_time()
