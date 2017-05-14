@@ -86,7 +86,8 @@ int8_t frame_data_to_frames(void *data, uint16_t data_len,
 	}
 	/* save head of buffer and set tail to begining of buffer */
 	f_buf->tail = 0;
-	f_buf->head = frame_amount - 1;
+	f_buf->head = frame_amount;
+	f_buf->cnt = frame_amount;
 
 	return frame_amount;
 }
@@ -94,35 +95,43 @@ int8_t frame_data_to_frames(void *data, uint16_t data_len,
 int8_t frame_get_stream(struct frames_buffer *f_buf, void *dest_buf, uint16_t len, uint8_t *data_len)
 {
 	struct frame *frame_rec = &f_buf->frame_record[f_buf->tail];
-	uint8_t tmp_type;
+	uint8_t fr_type;
 	int8_t ret, f_ret = FRAME_OK;
 
-	if (f_buf->tail == f_buf->head) {
+	if (f_buf->cnt == 0 && f_buf->tail == f_buf->head) {
 		return FRAME_BUF_EMPTY; // Buffer is EMPTY
 	}
 
 	if (len < FRAME_LEN(frame_rec))
 		return -FRAME_ERR_NOMEM;
 	
-	if (FRAME_TYPE(frame_rec) == FRAME_START) {
-		if (f_buf->start_found == 1) {
-			f_buf->start_found = 0;
-			return -FRAME_BRK_STREAM;
-		} else {
-			f_buf->start_found = 1;
-		}
-	} else if (FRAME_TYPE(frame_rec) == FRAME_END) {
-		f_buf->start_found = 0;
-		f_ret = FRAME_OK_END;
-	}
-
 	ret = frame_decode(frame_rec, dest_buf,
-		data_len, &tmp_type);
+		data_len, &fr_type);
 
 	if (ret) {
 		f_ret = ret;
+	} else {
+		if (fr_type == FRAME_START) {
+			if (f_buf->start_found == 1) {
+				f_buf->start_found = 0;
+				return -FRAME_BRK_STREAM;
+			} else {
+				f_buf->start_found = 1;
+			}
+		} else if (fr_type == FRAME_END) {
+			f_buf->start_found = 0;
+			f_ret = FRAME_OK_END;
+		} else if (fr_type == FRAME_SIMPLE) {
+			if (f_buf->start_found == 1) {
+				f_buf->start_found = 0;
+				return -FRAME_BRK_STREAM;
+			}
+			f_ret = FRAME_OK_SIMPLE;
+		}
 	}
+
 	FRAME_BUF_PTR_INC(f_buf->tail);
+	f_buf->cnt--;
 
 	return f_ret;
 }

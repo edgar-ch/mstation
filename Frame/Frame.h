@@ -30,12 +30,13 @@ enum FRAME_ERR
 	FRAME_BRK_STREAM = 4, // missing "end" frame in stream
 	FRAME_ERR_NOMEM = 5, // given buffer too small
 	FRAME_OK_END = 6, // get all frames of "stream"
-	FRAME_BUF_EMPTY = 7
+	FRAME_BUF_EMPTY = 7,
+	FRAME_OK_SIMPLE = 8
 };
 
 struct __attribute__((packed)) frame {
 	uint8_t header;
-	uint8_t payload[FRAME_PAYLOAD_LEN];
+	uint8_t payload[FRAME_PAYLOAD_LEN] = {0};
 	uint8_t checksum;
 };
 
@@ -44,14 +45,15 @@ struct __attribute__((packed)) frames_buffer
 	struct frame frame_record[FRAMES_BUF_LEN];
 	uint8_t tail = 0;
 	uint8_t head = 0;
+	uint8_t cnt = 0;
 	uint8_t start_found = 0;
 };
 
 #define FRAME_TYPE(A) (((A)->header & FRAME_TYPE_MASK) >> FRAME_TYPE_OFFS)
 #define FRAME_LEN(A) ((A)->header & FRAME_LEN_MASK)
 #define FRAME_BUF_PTR_INC(A) (A = (A + 1) % FRAMES_BUF_LEN)
-#define FRAMES_BUF_AVAL(A) ((((A)->head - (A)->tail + 1) + FRAMES_BUF_LEN) % FRAMES_BUF_LEN)
-#define FRAMES_BUF_USE(A) (FRAMES_BUF_LEN - FRAMES_BUF_AVAL((A)))
+#define FRAMES_BUF_AVAL(A) (FRAMES_BUF_LEN - FRAMES_BUF_USE((A)))
+#define FRAMES_BUF_USE(A) ((A).cnt)
 
 int8_t frame_generate(void *, struct frame *, uint8_t, uint8_t);
 int8_t frame_decode(struct frame *, void *, uint8_t *, uint8_t *);
