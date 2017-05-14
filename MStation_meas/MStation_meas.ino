@@ -386,9 +386,6 @@ void start_measure()
 	mdata_add_humidity(&tmp_humid, MDATA_HUMIDITY);
 	/* Finalize */
 	mdata_fin_packet(&measured);
-	#ifdef DEBUG
-	print_measured_serial(&measured);
-	#endif
 }
 
 void write_to_sd()
@@ -566,21 +563,18 @@ void alarm_int()
 	get_timeout = 1;
 }
 
-/**
- * @brief [request time]
- * @details [trying request time from base station]
- * 
- * @param long [description]
- * @return [1 if success, 0 if fail]
- */
 uint8_t try_request_datetime()
 {
 	unsigned long int curr_millis = millis();
+	struct frame time_req;
+	char time_msg[] = "T";
+
+	frame_generate(time_msg, &time_req, sizeof(time_msg), FRAME_SIMPLE);
 	radio.stopListening();
 	#ifdef DEBUG
 	Serial.println(F("Sending 'T' command"));
 	#endif
-	radio.write("T", 2);  // second byte for \0 character
+	radio.write(&time_req, sizeof(struct frame));  // second byte for \0 character
 	radio.startListening();
 	while ((millis() - curr_millis) < time_req_timeout)
 	{
@@ -746,10 +740,18 @@ void read_conf_from_EEPROM(struct module_settings *conf)
 
 void send_addr_to_base()
 {
-	t_buffer[0] = 'A';
-	memcpy(t_buffer + 1, &(radio_addr[1]), 6);
+	struct frame addr_fr;
+	char addr_str[7] = { 'A' };
+
+	memcpy(addr_str + 1, &(radio_addr[1]), 6);
+	frame_generate(
+		addr_str,
+		&addr_fr,
+		7,
+		FRAME_SIMPLE
+	);
 	radio.stopListening();
-	radio.write(t_buffer, 7);
+	radio.write(&addr_fr, sizeof(struct frame));
 	radio.startListening();
 }
 
