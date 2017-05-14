@@ -172,7 +172,7 @@ int8_t mdata_check_packet(struct mdata_packet *mdata)
 	uint16_t crc = 0xffff; // init for CCITT CRC16
 
 	if (mdata->header.type != MDATA_MEAS)
-		return -1;
+		return MDATA_WR_DATA;
 	
 	// calc data checksum
 	for (i = 0; i < data_size; ++i) {
@@ -180,7 +180,7 @@ int8_t mdata_check_packet(struct mdata_packet *mdata)
 	}
 
 	if (mdata->header.checksum == crc)
-		return 0;
+		return MDATA_OK;
 	else
-		return -2;
+		return MDATA_CRC_MISMATCH;
 }

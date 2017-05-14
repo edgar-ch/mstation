@@ -4,7 +4,11 @@
 
 #define MDATA_MAX_DATA_LENGTH 127
 #define MDATA_VERSION 0x01
+
+#ifndef MDATA_PACKET_BUF_LEN
+#warning "MDATA_PACKET_BUF_LEN is set to default value."
 #define MDATA_PACKET_BUF_LEN 6
+#endif
 
 enum MDATA_PACKET_TYPE {
 	MDATA_MEAS = 'M'
@@ -30,10 +34,22 @@ enum MDATA_TYPE {
 	MDATA_LUX = 0xA0
 };
 
+enum MDATA_DATA_STATE {
+	NO_DATA = 0,
+	HAS_DATA = 1,
+	HAS_DATA_FULL = 2
+};
+
+enum MDATA_PACKET_ERR {
+	MDATA_OK = 0,
+	MDATA_WR_DATA = -1, // given data is not MData packet
+	MDATA_CRC_MISMATCH = -2 // CRC mismatch
+};
+
 struct __attribute__((packed)) mdata_header {
 	uint8_t type;
 	uint8_t version;
-	uint8_t length;
+	uint16_t length;
 	uint16_t checksum;
 };
 
@@ -42,10 +58,18 @@ struct __attribute__((packed)) mdata_packet {
 	uint8_t data[MDATA_MAX_DATA_LENGTH];
 };
 
+struct __attribute__((packed)) mdata_buf_rec {
+	struct mdata_packet mdata_pack;
+	uint8_t *mdata_ptr_curr = NULL;
+	uint8_t mdata_free = sizeof(struct mdata_packet);
+	uint8_t has_data = NO_DATA;
+};
+
 struct __attribute__((packed)) mdata_packet_buf {
-	struct mdata_packet mdata_rec[MDATA_PACKET_BUF_LEN];
+	struct mdata_buf_rec mdata_rec[MDATA_PACKET_BUF_LEN];
 	uint8_t tail = 0;
 	uint8_t head = 0;
+	uint8_t cnt = 0;
 };
 
 struct __attribute__((packed)) temp_rec {
@@ -77,6 +101,10 @@ struct __attribute__((packed)) lux_rec {
 	uint8_t type;
 	float lux;
 };
+
+#define MDATA_BUF_INC(A) (A = (A + 1) % MDATA_PACKET_BUF_LEN)
+#define MDATA_BUF_AVAL(A) (MDATA_PACKET_BUF_LEN - MDATA_BUF_USE((A)))
+#define MDATA_BUF_USE(A) ((A).cnt)
 
 void mdata_init(struct mdata_packet *);
 int8_t mdata_add_temp(float *, uint8_t);
