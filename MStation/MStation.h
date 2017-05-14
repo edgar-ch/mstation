@@ -4,6 +4,8 @@
 /* Shared structures for base and measurement modules 
  * */
 
+enum TX_STATE{NO_TX = 0, TX_OK = 1, TX_FAILED = 2};
+
 struct __attribute__((packed)) datetime
 {
 	uint8_t seconds;
@@ -39,15 +41,15 @@ struct __attribute__((packed)) module_settings
 	uint8_t meas_period = 5; /* TODO: now only in minutes <= 59, make in seconds */
 	uint8_t sensors_prec = 3; // 0 - low, 1 - medium, 2 - high, 3 - very high
 	uint8_t is_sleep_enable = 0; // disabled by default
-	uint8_t radio_channel = 127; // default channel
 };
 
 struct __attribute__((packed)) meas_module
 {
+	uint8_t send_settings_flag = NO_TX;
+	uint8_t send_time_flag = NO_TX;
 	uint8_t is_present = 0;
 	uint8_t has_data = 0;
 	uint8_t address[6];
-	struct measure_data m_data;
 	struct module_settings conf;
 };
 
