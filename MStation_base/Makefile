@@ -30,7 +30,7 @@ CXXFLAGS         += -Wall
 
 ### CPPFLAGS
 ### Flags passed to the C pre-processor
-CPPFLAGS	 += -DFRAMES_BUF_LEN=5
+CPPFLAGS	 += -DFRAMES_BUF_LEN=5 -DMDATA_PACKET_BUF_LEN=2
 
 ### OBJDIR
 ### This is where you put the binaries you just compile using 'make'
