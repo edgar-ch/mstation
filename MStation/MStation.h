@@ -30,7 +30,7 @@ struct __attribute__((packed)) measure_data
 
 struct __attribute__((packed)) file_entry_head
 {
-	char head = 'M';
+	char head = 'R';
 	uint16_t data_len;
 	uint8_t is_sended;
 };
