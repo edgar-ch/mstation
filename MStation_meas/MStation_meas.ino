@@ -132,7 +132,7 @@ void radio_event();
 void alarm_int();
 uint8_t try_request_datetime();
 void parse_rx_data();
-void set_sended(uint32_t);
+void set_sended(uint32_t, uint32_t);
 struct file_entry read_entry(uint32_t);
 boolean getAddrDS18B20();
 boolean getTempDS18B20();
@@ -275,6 +275,7 @@ void loop()
 		//	break;
 		case SUCCESS:
 			frame_buf.tail++;
+			frame_buf.cnt--;
 			currState = SEND_LATEST_DATA;
 			break;
 		case FAILED:
@@ -395,7 +396,7 @@ void write_to_sd()
 	#ifdef DEBUG
 	Serial.println(F("Write measured to SD"));
 	#endif
-	//prev_pos = curr_pos;
+	prev_pos = curr_pos;
 	data_entry.is_sended = 0;
 	data_entry.data_len = mdata_packet_len(&measured);
 	meas_file.seekSet(curr_pos);
@@ -427,10 +428,11 @@ void prepare_data()
 void send_latest_data()
 {
 	// send frames to base station
-	if (frame_buf.tail != frame_buf.head) {
+	if (frame_buf.tail != frame_buf.head || frame_buf.cnt != 0) {
 		currState = SEND_FRAME;
 	} else {
 		currState = PREPARE_SLEEP;
+		set_sended(prev_pos, curr_pos); // Mark data as sended
 		/* FIXME: add checking for not sended data is avaliable */
 	}
 }
@@ -453,12 +455,13 @@ uint8_t wait_for_send()
 {
 	switch (radio_state) {
 		case TX_SUCCESS:
-			/*
+			
 			#ifdef DEBUG
-			Serial.println(F("Sending data success."));
+			Serial.println(F("Sending data frame success."));
 			#endif
 			// move file pointer and set flag
-			set_sended(not_sended_pos);
+			
+			/*set_sended(not_sended_pos);
 			not_sended_pos += sizeof(struct file_entry);
 			if (not_sended_pos < curr_pos)
 			{
@@ -470,10 +473,11 @@ uint8_t wait_for_send()
 				// nothing new to send
 				return SUCCESS;
 			}
-			*/
+			
 			#ifdef DEBUG
 			Serial.println(F("Sending data success."));
 			#endif
+			*/
 			return SUCCESS;
 			break;
 		case TX_FAIL:
@@ -640,14 +644,14 @@ void parse_rx_data()
 		}
 	}
 }
-/*
-void set_sended(uint32_t pos)
-{
-	meas_file.seekSet(pos + offsetof(file_entry, is_sended));
-	meas_file.write((uint8_t) 1);
-	meas_file.seekSet(pos);
-}
 
+void set_sended(uint32_t set_pos, uint32_t rest_pos)
+{
+	meas_file.seekSet(set_pos + offsetof(struct file_entry_head, is_sended));
+	meas_file.write((uint8_t) 1);
+	meas_file.seekSet(rest_pos);
+}
+/*
 struct file_entry read_entry(uint32_t pos)
 {
 	struct file_entry tmp;
