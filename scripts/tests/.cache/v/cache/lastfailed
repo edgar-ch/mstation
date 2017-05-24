@@ -1,0 +1,4 @@
+{
+  "test_parser.py::test_get_non_existed_data": true, 
+  "test_parser.py::test_successful_get_data": true
+}
