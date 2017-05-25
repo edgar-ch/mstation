@@ -1,13 +1,10 @@
 import pytest
+import binascii
 
 import scripts.parser as parser
 from scripts.exception import InputError
 
-FAKE_BIN = '''
-	4d01 2d00 4703 902e 030b 031b 0c10 10e1
-	7abc 4111 6666 4e41 12e1 7abc c113 9a99
-	ab41 304e 4082 8401 0060 6eb2 0000
-'''
+FAKE_BIN = binary_string = binascii.unhexlify('4d012d004703902e030b031b0c1010e17abc411166664e4112e17abcc1139a99ab41304e4082840100606eb20000a000521a')
 
 PARSED_FAKE_BIN = {
 	"MDATA_PRESSURE": 99458, 
@@ -38,8 +35,7 @@ def test_get_unvalid_data():
 
 def test_get_non_existed_data(monkeypatch):
 
-	monkeypatch.delattr("parser.STRUCT_TYPES", name='0x30', raising=True)
+	monkeypatch.delitem(parser.STRUCT_TYPES, name='0xa0', raising=False)
 
 	with pytest.raises(AttributeError):
-		PARSED_FAKE_BIN.delete["MDATA_PRESSURE"]
 		parser.get_data(FAKE_BIN)
