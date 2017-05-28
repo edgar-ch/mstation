@@ -35,4 +35,29 @@ Where that is
 **mstation_serv.py** - collect data from Arduino using serial port and sending it to web (Web, FTP, OpenWeatherMap)  
 **config/mstation.conf** - config to autostart for *mstation_serv.py* (using upstart)  
 **config/mstation_py.conf** - version of config for Raspberry Pi (set system time using NTP before starting)  
-**config/mstation_logrotate** - configuration file for logrotate service.  
+**config/mstation_logrotate** - configuration file for logrotate service. 
+
+
+
+For Python scripts
+------------------
+
+What should you do for use python scripts:
+
+* Install **python 2 last release** (not needed if you operational system is Linux based)
+
+* Install **pip** package:
+  * Download [Get-pip.py](https://bootstrap.pypa.io/get-pip.py)
+  * *python get-pip.py*
+
+* Install **virtualenv**:
+  * *pip install virtualenv*
+
+* Make the virtual environment outside you working directory and activate it:
+  * *cd ../*
+  * *virtualenv env*
+  * *. env/bin/activate*
+
+* Install all dependencies:
+  * *cd mstation*
+  * *pip install -r requirements.txt*
